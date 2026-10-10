@@ -2,1138 +2,1648 @@ html
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Purple Circle Game</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body {
-      width: 100%; height: 100%; overflow: hidden;
-      background-color: #000000; font-family: Arial, sans-serif;
-    }
-    canvas {
-      display: block; width: 100vw; height: 100vh;
-      background-color: #000000; cursor: crosshair;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Purple Circle Game</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background-color: #000000; font-family: Arial, sans-serif;
+}
+canvas {
+  display: block; width: 100vw; height: 100vh;
+  background-color: #000000; cursor: crosshair;
+}
+</style>
 </head>
 <body>
-  <canvas id="game"></canvas>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById("game");
+if (!canvas) throw new Error("Canvas not found");
+const ctx = canvas.getContext("2d");
 
-  <script>
-    const canvas = document.getElementById("game");
-    if (!canvas) throw new Error("Canvas not found");
-    const ctx = canvas.getContext("2d");
+function setSize() {
+  canvas.width = window.innerWidth || 800;
+  canvas.height = window.innerHeight || 600;
+}
+setSize();
+window.addEventListener("resize", setSize);
 
-    function setSize() {
-      canvas.width = window.innerWidth || 800;
-      canvas.height = window.innerHeight || 600;
-    }
-    setSize();
-    window.addEventListener("resize", setSize);
+const mouse = { x: canvas.width / 2, y: canvas.height / 2 };
+window.addEventListener("mousemove", function(e) {
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = e.clientX - rect.left;
+  mouse.y = e.clientY - rect.top;
+});
 
-    const mouse = { x: canvas.width / 2, y: canvas.height / 2 };
-    window.addEventListener("mousemove", function(e) {
-      const rect = canvas.getBoundingClientRect();
-      mouse.x = e.clientX - rect.left;
-      mouse.y = e.clientY - rect.top;
-    });
+const player = {
+  x: canvas.width / 2, y: canvas.height / 2,
+  radius: 25, baseSpeed: 260, speed: 260, color: "#9b30ff"
+};
 
-    const player = {
-      x: canvas.width / 2, y: canvas.height / 2,
-      radius: 25, baseSpeed: 260, speed: 260, color: "#9b30ff"
-    };
+const keys = { w: false, a: false, s: false, d: false };
 
-    const keys = { w: false, a: false, s: false, d: false };
+let health = 100;
+let maxHealth = 100;
+let enemies = [];
+let enemyBullets = [];
+let projectiles = [];
+let smokeBombs = [];
+let fireOrbs = [];
+let iceSpikes = [];
+let blizzardFields = [];
+let meleeSlashes = [];
+let bombExplosions = [];
+let landMines = [];
+let buhBullets = [];
+let buhShrines = [];
+let shrineSlashFx = [];
+let starfield = [];
+let enemySpawnTimer = 0;
+const enemySpawnInterval = 1.5;
+let lastTime = performance.now();
+let bgTime = 0;
 
-    let health = 100;
-    let maxHealth = 100;
-    let enemies = [];
-    let projectiles = [];
-    let smokeBombs = [];
-    let fireOrbs = [];
-    let iceSpikes = [];
-    let blizzardFields = [];
-    let meleeSlashes = [];
-    let enemySpawnTimer = 0;
-    const enemySpawnInterval = 1.5;
-    let lastTime = performance.now();
+for (let i = 0; i < 120; i++) {
+  starfield.push({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height,
+    r: Math.random() * 1.6 + 0.3,
+    a: Math.random() * 0.5 + 0.2,
+    tw: Math.random() * Math.PI * 2
+  });
+}
 
-    let isPaused = false;
-    let currentScreen = "game";
+let isPaused = false;
+let currentScreen = "game";
 
-    let currentWave = 1;
-    let enemiesKilledCurrentWave = 0;
-    let enemiesSpawnedCurrentWave = 0;
-    const MAX_ACTIVE_ENEMIES_ON_SCREEN = 5;
+let currentWave = 1;
+let enemiesKilledCurrentWave = 0;
+let enemiesSpawnedCurrentWave = 0;
+let enemiesToSpawnThisWave = 0;
+const MAX_ACTIVE_ENEMIES_ON_SCREEN = 8;
 
-    let equippedElement = "sand";
-    let unlockedElements = { sand: true, smoke: false, flame: false, blizzard: false };
-    let lastRollResult = "";
-    let money = 0;
-    let nextEnemyId = 1;
+let equippedElement = "sand";
+let unlockedElements = { sand: true, smoke: false, flame: false, blizzard: false, bomb: false, buh: false };
+let lastRollResult = "";
+let money = 0;
+let nextEnemyId = 1;
 
-    try {
-      const raw = localStorage.getItem("purple_circle_persistent_save");
-      if (raw) {
-        const data = JSON.parse(raw);
-        if (data && typeof data === "object") {
-          money = typeof data.money === "number" ? data.money : 0;
-          maxHealth = typeof data.maxHealth === "number" ? data.maxHealth : 100;
-          equippedElement = data.equippedElement || "sand";
-          if (data.unlockedElements) {
-            unlockedElements.sand = true;
-            if (data.unlockedElements.smoke) unlockedElements.smoke = true;
-            if (data.unlockedElements.flame) unlockedElements.flame = true;
-            if (data.unlockedElements.blizzard) unlockedElements.blizzard = true;
-          }
-          currentWave = typeof data.currentWave === "number" ? data.currentWave : 1;
-        }
-      }
-    } catch (e) {
-      localStorage.removeItem("purple_circle_persistent_save");
-    }
-
-    health = maxHealth;
-
-    function saveGameData() {
-      try {
-        const data = {
-          money: money,
-          maxHealth: maxHealth,
-          equippedElement: equippedElement,
-          unlockedElements: unlockedElements,
-          currentWave: currentWave
-        };
-        localStorage.setItem("purple_circle_persistent_save", JSON.stringify(data));
-      } catch (e) {}
-    }
-
-    function getKillsRequiredForWave(wave) {
-      return 5 + (wave - 1) * 2;
-    }
-
-    function getMoneyPerKill() {
-      return 1 + Math.floor((currentWave - 1) / 3);
-    }
-
-    let beamCooldownTimer = 0;
-    let activeLaser = null;
-    let auraCooldownTimer = 0;
-    let auraActiveTimer = 0;
-    let auraDamageTickTimer = 0;
-
-    let smokeShotCooldownTimer = 0;
-    let smokeDashCooldownTimer = 0;
-    let smokeDashActiveTimer = 0;
-    let smokeBombSpawnTimer = 0;
-
-    let flameSpinActiveTimer = 0;
-    let flameSpinCooldownTimer = 0;
-    let flameSpinAngle = 0;
-    let flameSpinTickTimer = 0;
-
-    let flameOrbCooldownTimer = 0;
-
-    let iceSpikeCooldownTimer = 0;
-    let blizzardFieldCooldownTimer = 0;
-
-    let meleeCooldownTimer = 0;
-
-    function resetGame() {
-      currentWave = 1;
-      enemiesKilledCurrentWave = 0;
-      enemiesSpawnedCurrentWave = 0;
-      health = maxHealth;
-      enemies = [];
-      projectiles = [];
-      smokeBombs = [];
-      fireOrbs = [];
-      iceSpikes = [];
-      blizzardFields = [];
-      meleeSlashes = [];
-      beamCooldownTimer = 0;
-      auraCooldownTimer = 0;
-      auraActiveTimer = 0;
-      smokeShotCooldownTimer = 0;
-      smokeDashCooldownTimer = 0;
-      smokeDashActiveTimer = 0;
-      flameSpinActiveTimer = 0;
-      flameSpinCooldownTimer = 0;
-      flameOrbCooldownTimer = 0;
-      iceSpikeCooldownTimer = 0;
-      blizzardFieldCooldownTimer = 0;
-      meleeCooldownTimer = 0;
-      activeLaser = null;
-      isPaused = false;
-      currentScreen = "game";
-      player.x = canvas.width / 2;
-      player.y = canvas.height / 2;
-      player.speed = player.baseSpeed;
-      saveGameData();
-    }
-
-    function spawnEnemy() {
-      const killsNeeded = getKillsRequiredForWave(currentWave);
-      if (enemiesSpawnedCurrentWave >= killsNeeded) return;
-      if (enemies.length >= MAX_ACTIVE_ENEMIES_ON_SCREEN) return;
-
-      const radius = 12;
-      const speed = 110;
-      let x, y;
-
-      if (Math.random() < 0.5) {
-        x = Math.random() < 0.5 ? -radius : canvas.width + radius;
-        y = Math.random() * canvas.height;
-      } else {
-        x = Math.random() * canvas.width;
-        y = Math.random() < 0.5 ? -radius : canvas.height + radius;
-      }
-
-      const enemyMaxHp = 100 + (currentWave - 1) * 25;
-
-      enemies.push({
-        id: nextEnemyId++,
-        x: x, y: y, radius: radius, speed: speed, baseSpeed: speed,
-        color: "#ff3333",
-        maxHealth: enemyMaxHp, health: enemyMaxHp, hitCooldown: 0,
-        freezeTimer: 0
-      });
-
-      enemiesSpawnedCurrentWave++;
-    }
-
-    function onEnemyKilled() {
-      enemiesKilledCurrentWave++;
-      money += getMoneyPerKill();
-      saveGameData();
-
-      if (enemiesKilledCurrentWave >= getKillsRequiredForWave(currentWave)) {
-        currentWave++;
-        enemiesKilledCurrentWave = 0;
-        enemiesSpawnedCurrentWave = 0;
-        saveGameData();
-      }
-    }
-
-    function useMelee() {
-      if (isPaused) return;
-      if (meleeCooldownTimer > 0) return;
-
-      const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
-
-      if (equippedElement === "flame") {
-        const reach = 110;
-        const arc = Math.PI * 0.7;
-        const dmg = 150;
-        meleeSlashes.push({
-          x: player.x, y: player.y, angle: angle,
-          reach: reach, arc: arc, life: 0.25, maxLife: 0.25,
-          color: "rgba(255, 100, 0, 0.85)", colorInner: "#ffff00"
-        });
-
-        for (let i = enemies.length - 1; i >= 0; i--) {
-          const enemy = enemies[i];
-          const dx = enemy.x - player.x, dy = enemy.y - player.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist <= reach + enemy.radius) {
-            let angleToEnemy = Math.atan2(dy, dx);
-            let diff = angleToEnemy - angle;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
-            if (Math.abs(diff) <= arc / 2) {
-              enemy.health -= dmg;
-              if (enemy.health <= 0) { enemies.splice(i, 1); onEnemyKilled(); }
-            }
-          }
-        }
-        meleeCooldownTimer = 1.0;
-
-      } else if (equippedElement === "blizzard") {
-        const reach = 200;
-        const arc = Math.PI * 0.6;
-        const dmg = 120;
-        meleeSlashes.push({
-          x: player.x, y: player.y, angle: angle,
-          reach: reach, arc: arc, life: 0.3, maxLife: 0.3,
-          color: "rgba(120, 200, 255, 0.85)", colorInner: "#e6f6ff"
-        });
-
-        for (let i = enemies.length - 1; i >= 0; i--) {
-          const enemy = enemies[i];
-          const dx = enemy.x - player.x, dy = enemy.y - player.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist <= reach + enemy.radius) {
-            let angleToEnemy = Math.atan2(dy, dx);
-            let diff = angleToEnemy - angle;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
-            if (Math.abs(diff) <= arc / 2) {
-              enemy.health -= dmg;
-              enemy.freezeTimer = Math.max(enemy.freezeTimer, 1.5);
-              if (enemy.health <= 0) { enemies.splice(i, 1); onEnemyKilled(); }
-            }
-          }
-        }
-        meleeCooldownTimer = 0.5;
-
-      } else {
-        meleeCooldownTimer = 0.5;
-      }
-    }
-
-    function useGAbility() {
-      if (isPaused) return;
-
-      if (equippedElement === "sand") {
-        if (beamCooldownTimer > 0 || enemies.length === 0) return;
-        let closestIdx = -1, minDist = Infinity;
-        for (let i = 0; i < enemies.length; i++) {
-          const dx = enemies[i].x - player.x, dy = enemies[i].y - player.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < minDist) { minDist = dist; closestIdx = i; }
-        }
-        if (closestIdx !== -1) {
-          const target = enemies[closestIdx];
-          activeLaser = { startX: player.x, startY: player.y, endX: target.x, endY: target.y, duration: 0.15 };
-          target.health -= 100;
-          if (target.health <= 0) { enemies.splice(closestIdx, 1); onEnemyKilled(); }
-          beamCooldownTimer = 1.0;
-        }
-      } else if (equippedElement === "smoke") {
-        if (smokeShotCooldownTimer > 0 || enemies.length === 0) return;
-        let closestIdx = -1, minDist = Infinity;
-        for (let i = 0; i < enemies.length; i++) {
-          const dx = enemies[i].x - player.x, dy = enemies[i].y - player.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < minDist) { minDist = dist; closestIdx = i; }
-        }
-        if (closestIdx !== -1) {
-          const target = enemies[closestIdx];
-          const angle = Math.atan2(target.y - player.y, target.x - player.x);
-          projectiles.push({
-            x: player.x, y: player.y,
-            vx: Math.cos(angle) * 450, vy: Math.sin(angle) * 450,
-            radius: 16, damage: 80
-          });
-          smokeShotCooldownTimer = 2.0;
-        }
-      } else if (equippedElement === "flame") {
-        if (flameSpinCooldownTimer > 0) return;
-        flameSpinActiveTimer = 3.0;
-        flameSpinCooldownTimer = 4.0;
-        flameSpinTickTimer = 0;
-      } else if (equippedElement === "blizzard") {
-        if (iceSpikeCooldownTimer > 0) return;
-        const spikeW = canvas.width * 0.5;
-        const spikeH = 180;
-        iceSpikes.push({
-          x: player.x, y: player.y,
-          w: spikeW, h: spikeH,
-          duration: 3.0,
-          impactDamage: 300,
-          contactDamage: 100,
-          contactTick: 0.5,
-          contactTimer: 0,
-          impactApplied: false
-        });
-        iceSpikeCooldownTimer = 4.0;
-      }
-    }
-
-    function useFAbility() {
-      if (isPaused) return;
-
-      if (equippedElement === "sand") {
-        if (auraCooldownTimer > 0) return;
-        auraActiveTimer = 4.0;
-        auraCooldownTimer = 8.0;
-        auraDamageTickTimer = 0;
-      } else if (equippedElement === "smoke") {
-        if (smokeDashCooldownTimer > 0) return;
-        smokeDashActiveTimer = 4.0;
-        smokeDashCooldownTimer = 4.0;
-        smokeBombSpawnTimer = 0;
-      } else if (equippedElement === "flame") {
-        if (flameOrbCooldownTimer > 0) return;
-        const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
-        fireOrbs.push({
-          x: player.x, y: player.y,
-          vx: Math.cos(angle) * 350, vy: Math.sin(angle) * 350,
-          radius: 35, duration: 4.0,
-          damage: 300, damageDealt: 0, maxDamage: 1500,
-          spinAngle: 0, hitIds: new Set()
-        });
-        flameOrbCooldownTimer = 5.0;
-      } else if (equippedElement === "blizzard") {
-        if (blizzardFieldCooldownTimer > 0) return;
-        const fieldRadius = player.radius * 12;
-        blizzardFields.push({
-          x: player.x, y: player.y,
-          radius: fieldRadius,
-          duration: 5.0,
-          impactDamage: 400,
-          contactDamage: 300,
-          contactTick: 0.5,
-          contactTimer: 0,
-          impactApplied: false
-        });
-        blizzardFieldCooldownTimer = 8.0;
-      }
-    }
-
-    function rollGacha() {
-      if (money < 10) {
-        lastRollResult = "Need at least 10 Money to Roll!";
-        return;
-      }
-
-      money -= 10;
-      saveGameData();
-
-      const rand = Math.random() * 100;
-      if (rand < 50) {
+try {
+  const raw = localStorage.getItem("purple_circle_persistent_save");
+  if (raw) {
+    const data = JSON.parse(raw);
+    if (data && typeof data === "object") {
+      money = typeof data.money === "number" ? data.money : 0;
+      maxHealth = typeof data.maxHealth === "number" ? data.maxHealth : 100;
+      equippedElement = data.equippedElement || "sand";
+      if (data.unlockedElements) {
         unlockedElements.sand = true;
-        lastRollResult = "Rolled: SAND Ability Set (50% Common)!";
-      } else if (rand < 69) {
-        unlockedElements.smoke = true;
-        lastRollResult = "Rolled: SMOKE Ability Set (19% Rare)!";
-      } else if (rand < 74) {
-        unlockedElements.flame = true;
-        lastRollResult = "Rolled: FLAME Ability Set (5% LEGENDARY)!!";
-      } else if (rand < 75) {
-        unlockedElements.blizzard = true;
-        lastRollResult = "Rolled: BLIZZARD Ability Set (1% MYTHIC)!!!";
-      } else {
-        maxHealth += 25;
-        health = maxHealth;
-        lastRollResult = "Rolled: STAT BOOST (+25 Max Health)!";
+        if (data.unlockedElements.smoke) unlockedElements.smoke = true;
+        if (data.unlockedElements.flame) unlockedElements.flame = true;
+        if (data.unlockedElements.blizzard) unlockedElements.blizzard = true;
+        if (data.unlockedElements.bomb) unlockedElements.bomb = true;
+        if (data.unlockedElements.buh) unlockedElements.buh = true;
       }
-      saveGameData();
+      currentWave = typeof data.currentWave === "number" ? data.currentWave : 1;
     }
+  }
+} catch (e) {
+  localStorage.removeItem("purple_circle_persistent_save");
+}
 
-    function update(deltaTime) {
-      if (isPaused) return;
+health = maxHealth;
 
-      if (beamCooldownTimer > 0) beamCooldownTimer = Math.max(0, beamCooldownTimer - deltaTime);
-      if (auraCooldownTimer > 0) auraCooldownTimer = Math.max(0, auraCooldownTimer - deltaTime);
-      if (meleeCooldownTimer > 0) meleeCooldownTimer = Math.max(0, meleeCooldownTimer - deltaTime);
+function saveGameData() {
+  try {
+    const data = {
+      money: money,
+      maxHealth: maxHealth,
+      equippedElement: equippedElement,
+      unlockedElements: unlockedElements,
+      currentWave: currentWave
+    };
+    localStorage.setItem("purple_circle_persistent_save", JSON.stringify(data));
+  } catch (e) {}
+}
 
-      let applyAuraDamage = false;
-      if (auraActiveTimer > 0) {
-        auraActiveTimer = Math.max(0, auraActiveTimer - deltaTime);
-        auraDamageTickTimer -= deltaTime;
-        if (auraDamageTickTimer <= 0) { applyAuraDamage = true; auraDamageTickTimer = 0.5; }
-      }
+function getKillsRequiredForWave(wave) {
+  return 5 + (wave - 1) * 2;
+}
 
-      if (activeLaser) {
-        activeLaser.duration -= deltaTime;
-        if (activeLaser.duration <= 0) activeLaser = null;
-      }
+function isBossWave(wave) {
+  return wave % 5 === 0;
+}
 
-      if (smokeShotCooldownTimer > 0) smokeShotCooldownTimer = Math.max(0, smokeShotCooldownTimer - deltaTime);
-      if (smokeDashCooldownTimer > 0) smokeDashCooldownTimer = Math.max(0, smokeDashCooldownTimer - deltaTime);
+function getMoneyPerKill() {
+  return 1 + Math.floor((currentWave - 1) / 3);
+}
 
-      if (smokeDashActiveTimer > 0) {
-        smokeDashActiveTimer = Math.max(0, smokeDashActiveTimer - deltaTime);
-        player.speed = player.baseSpeed * 1.5;
+let beamCooldownTimer = 0;
+let activeLaser = null;
+let auraCooldownTimer = 0;
+let auraActiveTimer = 0;
+let auraDamageTickTimer = 0;
 
-        smokeBombSpawnTimer -= deltaTime;
-        if (smokeBombSpawnTimer <= 0) {
-          smokeBombs.push({ x: player.x, y: player.y, radius: 45, duration: 2.0, damageTickTimer: 0 });
-          smokeBombSpawnTimer = 0.3;
+let smokeShotCooldownTimer = 0;
+let smokeDashCooldownTimer = 0;
+let smokeDashActiveTimer = 0;
+let smokeBombSpawnTimer = 0;
+
+let flameSpinActiveTimer = 0;
+let flameSpinCooldownTimer = 0;
+let flameSpinAngle = 0;
+let flameSpinTickTimer = 0;
+
+let flameOrbCooldownTimer = 0;
+
+let iceSpikeCooldownTimer = 0;
+let blizzardFieldCooldownTimer = 0;
+
+let meleeCooldownTimer = 0;
+
+let bombMiniCooldownTimer = 0;
+let bombBigCooldownTimer = 0;
+
+let buhBarrageCooldownTimer = 0;
+let buhShrineCooldownTimer = 0;
+
+function resetGame() {
+  currentWave = 1;
+  enemiesKilledCurrentWave = 0;
+  enemiesSpawnedCurrentWave = 0;
+  enemiesToSpawnThisWave = 0;
+  health = maxHealth;
+  enemies = [];
+  enemyBullets = [];
+  projectiles = [];
+  smokeBombs = [];
+  fireOrbs = [];
+  iceSpikes = [];
+  blizzardFields = [];
+  meleeSlashes = [];
+  bombExplosions = [];
+  landMines = [];
+  buhBullets = [];
+  buhShrines = [];
+  shrineSlashFx = [];
+  beamCooldownTimer = 0;
+  auraCooldownTimer = 0;
+  auraActiveTimer = 0;
+  smokeShotCooldownTimer = 0;
+  smokeDashCooldownTimer = 0;
+  smokeDashActiveTimer = 0;
+  flameSpinActiveTimer = 0;
+  flameSpinCooldownTimer = 0;
+  flameOrbCooldownTimer = 0;
+  iceSpikeCooldownTimer = 0;
+  blizzardFieldCooldownTimer = 0;
+  meleeCooldownTimer = 0;
+  bombMiniCooldownTimer = 0;
+  bombBigCooldownTimer = 0;
+  buhBarrageCooldownTimer = 0;
+  buhShrineCooldownTimer = 0;
+  activeLaser = null;
+  isPaused = false;
+  currentScreen = "game";
+  player.x = canvas.width / 2;
+  player.y = canvas.height / 2;
+  player.speed = player.baseSpeed;
+  saveGameData();
+}
+
+function startWave() {
+  enemiesKilledCurrentWave = 0;
+  enemiesSpawnedCurrentWave = 0;
+  enemiesToSpawnThisWave = getKillsRequiredForWave(currentWave);
+  if (isBossWave(currentWave)) {
+    enemiesToSpawnThisWave += 1;
+  }
+}
+
+function spawnEnemy() {
+  if (enemiesSpawnedCurrentWave >= enemiesToSpawnThisWave) return;
+  if (enemies.length >= MAX_ACTIVE_ENEMIES_ON_SCREEN) return;
+
+  const rand = Math.random();
+  let type = "normal";
+  let radius = 12;
+  let speed = 110;
+  let damage = 25;
+  let hp = 100 + (currentWave - 1) * 25;
+  let color = "#ff3333";
+  let isBoss = false;
+  let isTank = false;
+
+  if (isBossWave(currentWave) && !enemies.some(function(e){ return e.isBoss; }) && enemiesSpawnedCurrentWave === 0) {
+    isBoss = true;
+    type = "boss";
+    radius = 40;
+    speed = 60;
+    damage = 40;
+    hp = 1000;
+    color = "#a020f0";
+  } else if (currentWave >= 5 && rand < 0.18) {
+    isTank = true;
+    type = "tank";
+    radius = 22;
+    speed = 70;
+    damage = 35;
+    hp = 300 + (currentWave - 5) * 20;
+    color = "#3ea663";
+  } else if (currentWave >= 2 && rand < 0.5) {
+    type = "fast";
+    radius = 9;
+    speed = 200;
+    damage = 20;
+    hp = 70 + (currentWave - 1) * 12;
+    color = "#ff9900";
+  }
+
+  let x, y;
+  if (Math.random() < 0.5) {
+    x = Math.random() < 0.5 ? -radius : canvas.width + radius;
+    y = Math.random() * canvas.height;
+  } else {
+    x = Math.random() * canvas.width;
+    y = Math.random() < 0.5 ? -radius : canvas.height + radius;
+  }
+
+  const enemy = {
+    id: nextEnemyId++,
+    type: type,
+    isBoss: isBoss,
+    isTank: isTank,
+    x: x, y: y, radius: radius, speed: speed, baseSpeed: speed,
+    color: color,
+    damage: damage,
+    maxHealth: hp, health: hp, hitCooldown: 0,
+    freezeTimer: 0,
+    shootTimer: isBoss ? 1.5 : 0,
+    pulsePhase: Math.random() * Math.PI * 2
+  };
+
+  enemies.push(enemy);
+  enemiesSpawnedCurrentWave++;
+}
+
+function onEnemyKilled() {
+  enemiesKilledCurrentWave++;
+  money += getMoneyPerKill();
+  saveGameData();
+
+  if (enemiesKilledCurrentWave >= getKillsRequiredForWave(currentWave)) {
+    currentWave++;
+    startWave();
+    saveGameData();
+  }
+}
+
+function useMelee() {
+  if (isPaused) return;
+  if (meleeCooldownTimer > 0) return;
+
+  const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+
+  if (equippedElement === "flame") {
+    const reach = 110, arc = Math.PI * 0.7, dmg = 150;
+    meleeSlashes.push({ x: player.x, y: player.y, angle: angle, reach: reach, arc: arc, life: 0.25, maxLife: 0.25, color: "rgba(255, 100, 0, 0.85)", colorInner: "#ffff00" });
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const enemy = enemies[i];
+      const dx = enemy.x - player.x, dy = enemy.y - player.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist <= reach + enemy.radius) {
+        let d = Math.atan2(dy, dx) - angle;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        if (Math.abs(d) <= arc / 2) {
+          enemy.health -= dmg;
+          if (enemy.health <= 0) { enemies.splice(i, 1); onEnemyKilled(); }
         }
+      }
+    }
+    meleeCooldownTimer = 1.0;
+  } else if (equippedElement === "blizzard") {
+    const reach = 200, arc = Math.PI * 0.6, dmg = 120;
+    meleeSlashes.push({ x: player.x, y: player.y, angle: angle, reach: reach, arc: arc, life: 0.3, maxLife: 0.3, color: "rgba(120, 200, 255, 0.85)", colorInner: "#e6f6ff" });
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const enemy = enemies[i];
+      const dx = enemy.x - player.x, dy = enemy.y - player.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist <= reach + enemy.radius) {
+        let d = Math.atan2(dy, dx) - angle;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        if (Math.abs(d) <= arc / 2) {
+          enemy.health -= dmg;
+          enemy.freezeTimer = Math.max(enemy.freezeTimer, 1.5);
+          if (enemy.health <= 0) { enemies.splice(i, 1); onEnemyKilled(); }
+        }
+      }
+    }
+    meleeCooldownTimer = 0.5;
+  } else if (equippedElement === "bomb") {
+    const reach = 90, arc = Math.PI * 0.8, dmg = 90;
+    meleeSlashes.push({ x: player.x, y: player.y, angle: angle, reach: reach, arc: arc, life: 0.2, maxLife: 0.2, color: "rgba(80, 80, 80, 0.85)", colorInner: "#ffcc00" });
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const enemy = enemies[i];
+      const dx = enemy.x - player.x, dy = enemy.y - player.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist <= reach + enemy.radius) {
+        let d = Math.atan2(dy, dx) - angle;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        if (Math.abs(d) <= arc / 2) {
+          enemy.health -= dmg;
+          if (enemy.health <= 0) { enemies.splice(i, 1); onEnemyKilled(); }
+        }
+      }
+    }
+    meleeCooldownTimer = 0.6;
+  } else if (equippedElement === "buh") {
+    const reach = 160, arc = Math.PI * 0.85, dmg = 200;
+    meleeSlashes.push({ x: player.x, y: player.y, angle: angle, reach: reach, arc: arc, life: 0.28, maxLife: 0.28, color: "rgba(255, 0, 80, 0.85)", colorInner: "#ffccff" });
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const enemy = enemies[i];
+      const dx = enemy.x - player.x, dy = enemy.y - player.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist <= reach + enemy.radius) {
+        let d = Math.atan2(dy, dx) - angle;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        if (Math.abs(d) <= arc / 2) {
+          enemy.health -= dmg;
+          if (enemy.health <= 0) { enemies.splice(i, 1); onEnemyKilled(); }
+        }
+      }
+    }
+    meleeCooldownTimer = 0.7;
+  } else {
+    meleeCooldownTimer = 0.5;
+  }
+}
+
+function applyExplosionDamage(x, y, radius, damage) {
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const enemy = enemies[i];
+    if (Math.hypot(x - enemy.x, y - enemy.y) <= radius + enemy.radius) {
+      enemy.health -= damage;
+      if (enemy.health <= 0) { enemies.splice(i, 1); onEnemyKilled(); }
+    }
+  }
+}
+
+function nearestEnemyTo(x, y) {
+  let best = null, bestD = Infinity;
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+    const d = (e.x - x) * (e.x - x) + (e.y - y) * (e.y - y);
+    if (d < bestD) { bestD = d; best = e; }
+  }
+  return best;
+}
+
+function useGAbility() {
+  if (isPaused) return;
+
+  if (equippedElement === "sand") {
+    if (beamCooldownTimer > 0 || enemies.length === 0) return;
+    let closestIdx = -1, minDist = Infinity;
+    for (let i = 0; i < enemies.length; i++) {
+      const dx = enemies[i].x - player.x, dy = enemies[i].y - player.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < minDist) { minDist = dist; closestIdx = i; }
+    }
+    if (closestIdx !== -1) {
+      const target = enemies[closestIdx];
+      activeLaser = { startX: player.x, startY: player.y, endX: target.x, endY: target.y, duration: 0.15 };
+      target.health -= 100;
+      if (target.health <= 0) { enemies.splice(closestIdx, 1); onEnemyKilled(); }
+      beamCooldownTimer = 1.0;
+    }
+  } else if (equippedElement === "smoke") {
+    if (smokeShotCooldownTimer > 0 || enemies.length === 0) return;
+    let closestIdx = -1, minDist = Infinity;
+    for (let i = 0; i < enemies.length; i++) {
+      const dx = enemies[i].x - player.x, dy = enemies[i].y - player.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < minDist) { minDist = dist; closestIdx = i; }
+    }
+    if (closestIdx !== -1) {
+      const target = enemies[closestIdx];
+      const angle = Math.atan2(target.y - player.y, target.x - player.x);
+      projectiles.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 450, vy: Math.sin(angle) * 450, radius: 16, damage: 80 });
+      smokeShotCooldownTimer = 2.0;
+    }
+  } else if (equippedElement === "flame") {
+    if (flameSpinCooldownTimer > 0) return;
+    flameSpinActiveTimer = 3.0;
+    flameSpinCooldownTimer = 4.0;
+    flameSpinTickTimer = 0;
+  } else if (equippedElement === "blizzard") {
+    if (iceSpikeCooldownTimer > 0) return;
+    const spikeW = canvas.width * 0.5;
+    const spikeH = 180;
+    iceSpikes.push({ x: player.x, y: player.y, w: spikeW, h: spikeH, duration: 3.0, impactDamage: 300, contactDamage: 100, contactTick: 0.5, contactTimer: 0, impactApplied: false });
+    iceSpikeCooldownTimer = 4.0;
+  } else if (equippedElement === "bomb") {
+    if (bombMiniCooldownTimer > 0) return;
+    const radius = 90;
+    const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+    const tx = player.x + Math.cos(angle) * 120;
+    const ty = player.y + Math.sin(angle) * 120;
+    bombExplosions.push({ x: tx, y: ty, radius: radius, life: 0.4, maxLife: 0.4, damage: 100, hit: true });
+    applyExplosionDamage(tx, ty, radius, 100);
+    bombMiniCooldownTimer = 2.0;
+  } else if (equippedElement === "buh") {
+    if (buhBarrageCooldownTimer > 0) return;
+    const total = 7;
+    const baseAngle = Math.random() * Math.PI * 2;
+    const target = nearestEnemyTo(player.x, player.y);
+    for (let i = 0; i < total; i++) {
+      let a;
+      if (target) {
+        // auto-target: slight spread aimed at nearest enemy
+        const toTarget = Math.atan2(target.y - player.y, target.x - player.x);
+        a = toTarget + (i - 3) * 0.18;
       } else {
-        player.speed = player.baseSpeed;
+        a = baseAngle + (Math.PI * 2 / total) * i;
       }
+      buhBullets.push({
+        x: player.x, y: player.y,
+        vx: Math.cos(a) * 480,
+        vy: Math.sin(a) * 480,
+        radius: 22,
+        damage: 500,
+        hitIds: new Set(),
+        spinAngle: 0,
+        homing: true
+      });
+    }
+    buhBarrageCooldownTimer = 6.0;
+  }
+}
 
-      if (flameSpinCooldownTimer > 0) flameSpinCooldownTimer = Math.max(0, flameSpinCooldownTimer - deltaTime);
-      if (flameOrbCooldownTimer > 0) flameOrbCooldownTimer = Math.max(0, flameOrbCooldownTimer - deltaTime);
-      if (iceSpikeCooldownTimer > 0) iceSpikeCooldownTimer = Math.max(0, iceSpikeCooldownTimer - deltaTime);
-      if (blizzardFieldCooldownTimer > 0) blizzardFieldCooldownTimer = Math.max(0, blizzardFieldCooldownTimer - deltaTime);
+function useFAbility() {
+  if (isPaused) return;
 
-      if (flameSpinActiveTimer > 0) {
-        flameSpinActiveTimer = Math.max(0, flameSpinActiveTimer - deltaTime);
-        flameSpinAngle += deltaTime * 12;
-        flameSpinTickTimer -= deltaTime;
+  if (equippedElement === "sand") {
+    if (auraCooldownTimer > 0) return;
+    auraActiveTimer = 4.0;
+    auraCooldownTimer = 8.0;
+    auraDamageTickTimer = 0;
+  } else if (equippedElement === "smoke") {
+    if (smokeDashCooldownTimer > 0) return;
+    smokeDashActiveTimer = 4.0;
+    smokeDashCooldownTimer = 4.0;
+    smokeBombSpawnTimer = 0;
+  } else if (equippedElement === "flame") {
+    if (flameOrbCooldownTimer > 0) return;
+    const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+    fireOrbs.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 350, vy: Math.sin(angle) * 350, radius: 35, duration: 4.0, damage: 300, damageDealt: 0, maxDamage: 1500, spinAngle: 0, hitIds: new Set() });
+    flameOrbCooldownTimer = 5.0;
+  } else if (equippedElement === "blizzard") {
+    if (blizzardFieldCooldownTimer > 0) return;
+    const fieldRadius = player.radius * 12;
+    blizzardFields.push({ x: player.x, y: player.y, radius: fieldRadius, duration: 5.0, impactDamage: 400, contactDamage: 300, contactTick: 0.5, contactTimer: 0, impactApplied: false });
+    blizzardFieldCooldownTimer = 8.0;
+  } else if (equippedElement === "bomb") {
+    if (bombBigCooldownTimer > 0) return;
+    const bigRadius = 180;
+    bombExplosions.push({ x: player.x, y: player.y, radius: bigRadius, life: 0.5, maxLife: 0.5, damage: 400, hit: true });
+    applyExplosionDamage(player.x, player.y, bigRadius, 400);
+    for (let m = 0; m < 8; m++) {
+      const a = (Math.PI * 2 / 8) * m + Math.random() * 0.5;
+      const d = 100 + Math.random() * 120;
+      landMines.push({ x: player.x + Math.cos(a) * d, y: player.y + Math.sin(a) * d, radius: 18, duration: 5.0, damage: 200, exploded: false, explodeTimer: 0 });
+    }
+    bombBigCooldownTimer = 6.0;
+  } else if (equippedElement === "buh") {
+    if (buhShrineCooldownTimer > 0) return;
+    const shrineRadius = player.radius * 14;
+    buhShrines.push({
+      x: player.x, y: player.y,
+      radius: shrineRadius,
+      duration: 7.0,
+      tickTimer: 0,
+      tickInterval: 0.05,
+      damage: 100
+    });
+    buhShrineCooldownTimer = 7.0;
+  }
+}
 
-        if (flameSpinTickTimer <= 0) {
-          flameSpinTickTimer = 0.3;
-          const beamLen = 140;
-          const laser1X = player.x + Math.cos(flameSpinAngle) * beamLen;
-          const laser1Y = player.y + Math.sin(flameSpinAngle) * beamLen;
-          const laser2X = player.x + Math.cos(flameSpinAngle + Math.PI) * beamLen;
-          const laser2Y = player.y + Math.sin(flameSpinAngle + Math.PI) * beamLen;
-          const SPIN_HITBOX = 90;
+function rollGacha() {
+  if (money < 10) { lastRollResult = "Need at least 10 Money to Roll!"; return; }
+  money -= 10;
+  saveGameData();
+  const rand = Math.random() * 100;
+  if (rand < 47) {
+    unlockedElements.sand = true;
+    lastRollResult = "Rolled: SAND Ability Set (47%)!";
+  } else if (rand < 66) {
+    unlockedElements.smoke = true;
+    lastRollResult = "Rolled: SMOKE Ability Set (19% Rare)!";
+  } else if (rand < 70) {
+    unlockedElements.bomb = true;
+    lastRollResult = "Rolled: BOMB Ability Set (4% Rare)!!";
+  } else if (rand < 74) {
+    unlockedElements.flame = true;
+    lastRollResult = "Rolled: FLAME Ability Set (4% LEGENDARY)!!";
+  } else if (rand < 74.4) {
+    unlockedElements.blizzard = true;
+    lastRollResult = "Rolled: BLIZZARD Ability Set (0.4% MYTHIC)!!!";
+  } else if (rand < 74.5) {
+    unlockedElements.buh = true;
+    lastRollResult = "Rolled: BUH Ability Set (0.1% ULTRA MYTHIC)!!!!";
+  } else {
+    maxHealth += 25;
+    health = maxHealth;
+    lastRollResult = "Rolled: STAT BOOST (+25 Max Health)!";
+  }
+  saveGameData();
+}
 
-          for (let i = enemies.length - 1; i >= 0; i--) {
-            const enemy = enemies[i];
-            if (Math.hypot(enemy.x - laser1X, enemy.y - laser1Y) <= SPIN_HITBOX + enemy.radius ||
-                Math.hypot(enemy.x - laser2X, enemy.y - laser2Y) <= SPIN_HITBOX + enemy.radius) {
-              enemy.health -= 100;
-              if (enemy.health <= 0) {
-                enemies.splice(i, 1);
-                onEnemyKilled();
-              }
-            }
-          }
-        }
-      }
+function update(deltaTime) {
+  if (isPaused) return;
+  bgTime += deltaTime;
 
-      for (let i = meleeSlashes.length - 1; i >= 0; i--) {
-        meleeSlashes[i].life -= deltaTime;
-        if (meleeSlashes[i].life <= 0) meleeSlashes.splice(i, 1);
-      }
+  if (beamCooldownTimer > 0) beamCooldownTimer = Math.max(0, beamCooldownTimer - deltaTime);
+  if (auraCooldownTimer > 0) auraCooldownTimer = Math.max(0, auraCooldownTimer - deltaTime);
+  if (meleeCooldownTimer > 0) meleeCooldownTimer = Math.max(0, meleeCooldownTimer - deltaTime);
+  if (bombMiniCooldownTimer > 0) bombMiniCooldownTimer = Math.max(0, bombMiniCooldownTimer - deltaTime);
+  if (bombBigCooldownTimer > 0) bombBigCooldownTimer = Math.max(0, bombBigCooldownTimer - deltaTime);
+  if (buhBarrageCooldownTimer > 0) buhBarrageCooldownTimer = Math.max(0, buhBarrageCooldownTimer - deltaTime);
+  if (buhShrineCooldownTimer > 0) buhShrineCooldownTimer = Math.max(0, buhShrineCooldownTimer - deltaTime);
 
-      for (let i = iceSpikes.length - 1; i >= 0; i--) {
-        const spike = iceSpikes[i];
-        spike.duration -= deltaTime;
+  let applyAuraDamage = false;
+  if (auraActiveTimer > 0) {
+    auraActiveTimer = Math.max(0, auraActiveTimer - deltaTime);
+    auraDamageTickTimer -= deltaTime;
+    if (auraDamageTickTimer <= 0) { applyAuraDamage = true; auraDamageTickTimer = 0.5; }
+  }
 
-        if (!spike.impactApplied) {
-          spike.impactApplied = true;
-          for (let j = enemies.length - 1; j >= 0; j--) {
-            const enemy = enemies[j];
-            const insideH = Math.abs(enemy.x - spike.x) <= spike.w / 2 + enemy.radius &&
-                            Math.abs(enemy.y - spike.y) <= spike.h / 2 + enemy.radius;
-            const insideV = Math.abs(enemy.y - spike.y) <= spike.w / 2 + enemy.radius &&
-                            Math.abs(enemy.x - spike.x) <= spike.h / 2 + enemy.radius;
-            if (insideH || insideV) {
-              enemy.health -= spike.impactDamage;
-              enemy.freezeTimer = Math.max(enemy.freezeTimer, 3.0);
-              if (enemy.health <= 0) { enemies.splice(j, 1); onEnemyKilled(); }
-            }
-          }
-        }
+  if (activeLaser) {
+    activeLaser.duration -= deltaTime;
+    if (activeLaser.duration <= 0) activeLaser = null;
+  }
 
-        spike.contactTimer -= deltaTime;
-        if (spike.contactTimer <= 0) {
-          spike.contactTimer = spike.contactTick;
-          for (let j = enemies.length - 1; j >= 0; j--) {
-            const enemy = enemies[j];
-            const insideH = Math.abs(enemy.x - spike.x) <= spike.w / 2 + enemy.radius &&
-                            Math.abs(enemy.y - spike.y) <= spike.h / 2 + enemy.radius;
-            const insideV = Math.abs(enemy.y - spike.y) <= spike.w / 2 + enemy.radius &&
-                            Math.abs(enemy.x - spike.x) <= spike.h / 2 + enemy.radius;
-            if (insideH || insideV) {
-              enemy.health -= spike.contactDamage;
-              enemy.freezeTimer = Math.max(enemy.freezeTimer, 1.5);
-              if (enemy.health <= 0) { enemies.splice(j, 1); onEnemyKilled(); }
-            }
-          }
-        }
+  if (smokeShotCooldownTimer > 0) smokeShotCooldownTimer = Math.max(0, smokeShotCooldownTimer - deltaTime);
+  if (smokeDashCooldownTimer > 0) smokeDashCooldownTimer = Math.max(0, smokeDashCooldownTimer - deltaTime);
 
-        if (spike.duration <= 0) iceSpikes.splice(i, 1);
-      }
+  if (smokeDashActiveTimer > 0) {
+    smokeDashActiveTimer = Math.max(0, smokeDashActiveTimer - deltaTime);
+    player.speed = player.baseSpeed * 1.5;
+    smokeBombSpawnTimer -= deltaTime;
+    if (smokeBombSpawnTimer <= 0) {
+      smokeBombs.push({ x: player.x, y: player.y, radius: 45, duration: 2.0, damageTickTimer: 0 });
+      smokeBombSpawnTimer = 0.3;
+    }
+  } else {
+    player.speed = player.baseSpeed;
+  }
 
-      for (let i = blizzardFields.length - 1; i >= 0; i--) {
-        const field = blizzardFields[i];
-        field.duration -= deltaTime;
+  if (flameSpinCooldownTimer > 0) flameSpinCooldownTimer = Math.max(0, flameSpinCooldownTimer - deltaTime);
+  if (flameOrbCooldownTimer > 0) flameOrbCooldownTimer = Math.max(0, flameOrbCooldownTimer - deltaTime);
+  if (iceSpikeCooldownTimer > 0) iceSpikeCooldownTimer = Math.max(0, iceSpikeCooldownTimer - deltaTime);
+  if (blizzardFieldCooldownTimer > 0) blizzardFieldCooldownTimer = Math.max(0, blizzardFieldCooldownTimer - deltaTime);
 
-        if (!field.impactApplied) {
-          field.impactApplied = true;
-          for (let j = enemies.length - 1; j >= 0; j--) {
-            const enemy = enemies[j];
-            if (Math.hypot(enemy.x - field.x, enemy.y - field.y) <= field.radius + enemy.radius) {
-              enemy.health -= field.impactDamage;
-              enemy.freezeTimer = Math.max(enemy.freezeTimer, 3.0);
-              if (enemy.health <= 0) { enemies.splice(j, 1); onEnemyKilled(); }
-            }
-          }
-        }
-
-        field.contactTimer -= deltaTime;
-        if (field.contactTimer <= 0) {
-          field.contactTimer = field.contactTick;
-          for (let j = enemies.length - 1; j >= 0; j--) {
-            const enemy = enemies[j];
-            if (Math.hypot(enemy.x - field.x, enemy.y - field.y) <= field.radius + enemy.radius) {
-              enemy.health -= field.contactDamage;
-              enemy.freezeTimer = Math.max(enemy.freezeTimer, 1.5);
-              if (enemy.health <= 0) { enemies.splice(j, 1); onEnemyKilled(); }
-            }
-          }
-        }
-
-        if (field.duration <= 0) blizzardFields.splice(i, 1);
-      }
-
-      let horizontal = 0, vertical = 0;
-      if (keys.w) vertical -= 1;
-      if (keys.s) vertical += 1;
-      if (keys.a) horizontal -= 1;
-      if (keys.d) horizontal += 1;
-
-      if (horizontal !== 0 && vertical !== 0) {
-        horizontal *= 1 / Math.sqrt(2);
-        vertical *= 1 / Math.sqrt(2);
-      }
-
-      player.x += horizontal * player.speed * deltaTime;
-      player.y += vertical * player.speed * deltaTime;
-      player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
-      player.y = Math.max(player.radius, Math.min(canvas.height - player.radius, player.y));
-
-      for (let i = projectiles.length - 1; i >= 0; i--) {
-        const p = projectiles[i];
-        p.x += p.vx * deltaTime;
-        p.y += p.vy * deltaTime;
-
-        for (let j = enemies.length - 1; j >= 0; j--) {
-          const enemy = enemies[j];
-          if (Math.hypot(p.x - enemy.x, p.y - enemy.y) < p.radius + enemy.radius) {
-            enemy.health -= p.damage;
-            projectiles.splice(i, 1);
-            if (enemy.health <= 0) {
-              enemies.splice(j, 1);
-              onEnemyKilled();
-            }
-            break;
-          }
-        }
-      }
-
-      for (let i = smokeBombs.length - 1; i >= 0; i--) {
-        const b = smokeBombs[i];
-        b.duration -= deltaTime;
-        b.damageTickTimer -= deltaTime;
-
-        if (b.damageTickTimer <= 0) {
-          b.damageTickTimer = 0.4;
-          for (let j = enemies.length - 1; j >= 0; j--) {
-            const enemy = enemies[j];
-            if (Math.hypot(b.x - enemy.x, b.y - enemy.y) <= b.radius + enemy.radius) {
-              enemy.health -= 20;
-              if (enemy.health <= 0) {
-                enemies.splice(j, 1);
-                onEnemyKilled();
-              }
-            }
-          }
-        }
-        if (b.duration <= 0) smokeBombs.splice(i, 1);
-      }
-
-      for (let i = fireOrbs.length - 1; i >= 0; i--) {
-        const orb = fireOrbs[i];
-        orb.x += orb.vx * deltaTime;
-        orb.y += orb.vy * deltaTime;
-        orb.duration -= deltaTime;
-        orb.spinAngle += deltaTime * 5;
-
-        for (let j = enemies.length - 1; j >= 0; j--) {
-          const enemy = enemies[j];
-          if (orb.hitIds.has(enemy.id)) continue;
-
-          const dist = Math.hypot(orb.x - enemy.x, orb.y - enemy.y);
-          if (dist <= orb.radius + enemy.radius) {
-            const dmg = Math.min(orb.damage, orb.maxDamage - orb.damageDealt);
-            if (dmg <= 0) break;
-
-            enemy.health -= dmg;
-            orb.damageDealt += dmg;
-            orb.hitIds.add(enemy.id);
-
-            if (enemy.health <= 0) {
-              enemies.splice(j, 1);
-              onEnemyKilled();
-            }
-
-            if (orb.damageDealt >= orb.maxDamage) break;
-          }
-        }
-
-        if (orb.damageDealt >= orb.maxDamage || orb.duration <= 0) {
-          fireOrbs.splice(i, 1);
-        }
-      }
-
-      enemySpawnTimer += deltaTime;
-      if (enemySpawnTimer >= enemySpawnInterval) {
-        spawnEnemy();
-        enemySpawnTimer = 0;
-      }
-
+  if (flameSpinActiveTimer > 0) {
+    flameSpinActiveTimer = Math.max(0, flameSpinActiveTimer - deltaTime);
+    flameSpinAngle += deltaTime * 12;
+    flameSpinTickTimer -= deltaTime;
+    if (flameSpinTickTimer <= 0) {
+      flameSpinTickTimer = 0.3;
+      const beamLen = 140;
+      const laser1X = player.x + Math.cos(flameSpinAngle) * beamLen;
+      const laser1Y = player.y + Math.sin(flameSpinAngle) * beamLen;
+      const laser2X = player.x + Math.cos(flameSpinAngle + Math.PI) * beamLen;
+      const laser2Y = player.y + Math.sin(flameSpinAngle + Math.PI) * beamLen;
+      const SPIN_HITBOX = 90;
       for (let i = enemies.length - 1; i >= 0; i--) {
         const enemy = enemies[i];
-
-        if (enemy.freezeTimer > 0) {
-          enemy.freezeTimer = Math.max(0, enemy.freezeTimer - deltaTime);
-          enemy.speed = enemy.baseSpeed * 0.4;
-        } else {
-          enemy.speed = enemy.baseSpeed;
+        if (Math.hypot(enemy.x - laser1X, enemy.y - laser1Y) <= SPIN_HITBOX + enemy.radius ||
+            Math.hypot(enemy.x - laser2X, enemy.y - laser2Y) <= SPIN_HITBOX + enemy.radius) {
+          enemy.health -= 100;
+          if (enemy.health <= 0) { enemies.splice(i, 1); onEnemyKilled(); }
         }
+      }
+    }
+  }
 
-        const dx = player.x - enemy.x;
-        const dy = player.y - enemy.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+  for (let i = meleeSlashes.length - 1; i >= 0; i--) {
+    meleeSlashes[i].life -= deltaTime;
+    if (meleeSlashes[i].life <= 0) meleeSlashes.splice(i, 1);
+  }
 
-        if (dist > 0) {
-          enemy.x += (dx / dist) * enemy.speed * deltaTime;
-          enemy.y += (dy / dist) * enemy.speed * deltaTime;
-        }
+  for (let i = bombExplosions.length - 1; i >= 0; i--) {
+    bombExplosions[i].life -= deltaTime;
+    if (bombExplosions[i].life <= 0) bombExplosions.splice(i, 1);
+  }
 
-        if (equippedElement === "sand" && auraActiveTimer > 0 && applyAuraDamage) {
-          if (dist <= 120 + enemy.radius) {
-            enemy.health -= 25;
-            if (enemy.health <= 0) {
-              enemies.splice(i, 1);
-              onEnemyKilled();
-              continue;
-            }
-          }
-        }
+  // BUH BULLETS - pierce, homing, leave map only
+  for (let i = buhBullets.length - 1; i >= 0; i--) {
+    const b = buhBullets[i];
+    if (b.homing) {
+      const t = nearestEnemyTo(b.x, b.y);
+      if (t) {
+        const cur = Math.atan2(b.vy, b.vx);
+        const want = Math.atan2(t.y - b.y, t.x - b.x);
+        let diff = want - cur;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        const turn = Math.min(Math.abs(diff), 4.0 * deltaTime) * Math.sign(diff);
+        const na = cur + turn;
+        const sp = Math.hypot(b.vx, b.vy);
+        b.vx = Math.cos(na) * sp;
+        b.vy = Math.sin(na) * sp;
+      }
+    }
+    b.x += b.vx * deltaTime;
+    b.y += b.vy * deltaTime;
+    b.spinAngle += deltaTime * 8;
 
-        if (enemy.hitCooldown > 0) enemy.hitCooldown -= deltaTime;
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const enemy = enemies[j];
+      if (b.hitIds.has(enemy.id)) continue;
+      if (Math.hypot(b.x - enemy.x, b.y - enemy.y) <= b.radius + enemy.radius) {
+        enemy.health -= b.damage;
+        b.hitIds.add(enemy.id);
+        if (enemy.health <= 0) { enemies.splice(j, 1); onEnemyKilled(); }
+      }
+    }
 
-        if (dist < player.radius + enemy.radius) {
-          if (enemy.hitCooldown <= 0) {
-            health -= 25;
-            enemy.hitCooldown = 0.5;
-            if (health <= 0) resetGame();
-          }
+    if (b.x < -100 || b.x > canvas.width + 100 || b.y < -100 || b.y > canvas.height + 100) {
+      buhBullets.splice(i, 1);
+    }
+  }
+
+  for (let i = buhShrines.length - 1; i >= 0; i--) {
+    const shrine = buhShrines[i];
+    shrine.duration -= deltaTime;
+    shrine.tickTimer -= deltaTime;
+
+    if (shrine.tickTimer <= 0) {
+      shrine.tickTimer = shrine.tickInterval;
+      for (let j = enemies.length - 1; j >= 0; j--) {
+        const enemy = enemies[j];
+        if (Math.hypot(shrine.x - enemy.x, shrine.y - enemy.y) <= shrine.radius + enemy.radius) {
+          enemy.health -= shrine.damage;
+          shrineSlashFx.push({ x: enemy.x, y: enemy.y, angle: Math.random() * Math.PI * 2, life: 0.12, maxLife: 0.12, len: 20 + Math.random() * 10 });
+          if (enemy.health <= 0) { enemies.splice(j, 1); onEnemyKilled(); }
         }
       }
     }
 
-    function draw() {
-      ctx.fillStyle = "#000000";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (shrine.duration <= 0) buhShrines.splice(i, 1);
+  }
 
-      for (const b of smokeBombs) {
-        ctx.beginPath();
-        ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(180, 180, 180, 0.4)";
-        ctx.fill();
+  for (let i = shrineSlashFx.length - 1; i >= 0; i--) {
+    shrineSlashFx[i].life -= deltaTime;
+    if (shrineSlashFx[i].life <= 0) shrineSlashFx.splice(i, 1);
+  }
+
+  for (let i = landMines.length - 1; i >= 0; i--) {
+    const m = landMines[i];
+    if (m.exploded) {
+      m.explodeTimer -= deltaTime;
+      if (m.explodeTimer <= 0) landMines.splice(i, 1);
+      continue;
+    }
+    m.duration -= deltaTime;
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const enemy = enemies[j];
+      if (Math.hypot(m.x - enemy.x, m.y - enemy.y) <= m.radius + enemy.radius) {
+        m.exploded = true;
+        m.explodeTimer = 0.35;
+        bombExplosions.push({ x: m.x, y: m.y, radius: 70, life: 0.35, maxLife: 0.35, damage: m.damage, hit: true });
+        applyExplosionDamage(m.x, m.y, 70, m.damage);
+        break;
       }
+    }
+    if (m.duration <= 0 && !m.exploded) landMines.splice(i, 1);
+  }
 
-      for (const field of blizzardFields) {
-        ctx.beginPath();
-        ctx.arc(field.x, field.y, field.radius, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(100, 200, 255, 0.35)";
-        ctx.fill();
-        ctx.strokeStyle = "rgba(150, 230, 255, 0.9)";
-        ctx.lineWidth = 4;
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(field.x, field.y, field.radius * 0.6, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(200, 240, 255, 0.25)";
-        ctx.fill();
-      }
-
-      for (const spike of iceSpikes) {
-        const halfW = spike.w / 2;
-        const halfH = spike.h / 2;
-
-        // Horizontal bar
-        ctx.fillStyle = "rgba(120, 200, 255, 0.85)";
-        ctx.fillRect(spike.x - halfW, spike.y - halfH / 2, spike.w, spike.h / 2);
-        ctx.strokeStyle = "rgba(220, 245, 255, 0.95)";
-        ctx.lineWidth = 4;
-        ctx.strokeRect(spike.x - halfW, spike.y - halfH / 2, spike.w, spike.h / 2);
-
-        // Vertical bar
-        ctx.fillStyle = "rgba(120, 200, 255, 0.85)";
-        ctx.fillRect(spike.x - halfH / 2, spike.y - halfW, spike.h / 2, spike.w);
-        ctx.strokeStyle = "rgba(220, 245, 255, 0.95)";
-        ctx.lineWidth = 4;
-        ctx.strokeRect(spike.x - halfH / 2, spike.y - halfW, spike.h / 2, spike.w);
-
-        // Spikes along horizontal
-        for (let k = 0; k < 10; k++) {
-          const sx = spike.x - halfW + (spike.w / 10) * k + spike.w / 20;
-          ctx.beginPath();
-          ctx.moveTo(sx - 18, spike.y + halfH / 4);
-          ctx.lineTo(sx, spike.y - 30);
-          ctx.lineTo(sx + 18, spike.y + halfH / 4);
-          ctx.closePath();
-          ctx.fillStyle = "rgba(180, 225, 255, 0.7)";
-          ctx.fill();
-          ctx.strokeStyle = "rgba(240, 250, 255, 0.9)";
-          ctx.lineWidth = 2;
-          ctx.stroke();
-
-          ctx.beginPath();
-          ctx.moveTo(sx - 18, spike.y - halfH / 4);
-          ctx.lineTo(sx, spike.y + 30);
-          ctx.lineTo(sx + 18, spike.y - halfH / 4);
-          ctx.closePath();
-          ctx.fillStyle = "rgba(180, 225, 255, 0.7)";
-          ctx.fill();
-          ctx.stroke();
-        }
-
-        // Spikes along vertical
-        for (let k = 0; k < 10; k++) {
-          const sy = spike.y - halfW + (spike.w / 10) * k + spike.w / 20;
-          ctx.beginPath();
-          ctx.moveTo(spike.x + halfH / 4, sy - 18);
-          ctx.lineTo(spike.x - 30, sy);
-          ctx.lineTo(spike.x + halfH / 4, sy + 18);
-          ctx.closePath();
-          ctx.fillStyle = "rgba(180, 225, 255, 0.7)";
-          ctx.fill();
-          ctx.strokeStyle = "rgba(240, 250, 255, 0.9)";
-          ctx.lineWidth = 2;
-          ctx.stroke();
-
-          ctx.beginPath();
-          ctx.moveTo(spike.x - halfH / 4, sy - 18);
-          ctx.lineTo(spike.x + 30, sy);
-          ctx.lineTo(spike.x - halfH / 4, sy + 18);
-          ctx.closePath();
-          ctx.fillStyle = "rgba(180, 225, 255, 0.7)";
-          ctx.fill();
-          ctx.stroke();
+  for (let i = iceSpikes.length - 1; i >= 0; i--) {
+    const spike = iceSpikes[i];
+    spike.duration -= deltaTime;
+    if (!spike.impactApplied) {
+      spike.impactApplied = true;
+      for (let j = enemies.length - 1; j >= 0; j--) {
+        const enemy = enemies[j];
+        const insideH = Math.abs(enemy.x - spike.x) <= spike.w / 2 + enemy.radius && Math.abs(enemy.y - spike.y) <= spike.h / 2 + enemy.radius;
+        const insideV = Math.abs(enemy.y - spike.y) <= spike.w / 2 + enemy.radius && Math.abs(enemy.x - spike.x) <= spike.h / 2 + enemy.radius;
+        if (insideH || insideV) {
+          enemy.health -= spike.impactDamage;
+          enemy.freezeTimer = Math.max(enemy.freezeTimer, 3.0);
+          if (enemy.health <= 0) { enemies.splice(j, 1); onEnemyKilled(); }
         }
       }
-
-      for (const orb of fireOrbs) {
-        ctx.save();
-        ctx.translate(orb.x, orb.y);
-        ctx.rotate(orb.spinAngle);
-        ctx.beginPath();
-        ctx.arc(0, 0, orb.radius, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255, 69, 0, 0.8)";
-        ctx.fill();
-        ctx.strokeStyle = "#ffcc00";
-        ctx.lineWidth = 6;
-        ctx.stroke();
-        ctx.restore();
+    }
+    spike.contactTimer -= deltaTime;
+    if (spike.contactTimer <= 0) {
+      spike.contactTimer = spike.contactTick;
+      for (let j = enemies.length - 1; j >= 0; j--) {
+        const enemy = enemies[j];
+        const insideH = Math.abs(enemy.x - spike.x) <= spike.w / 2 + enemy.radius && Math.abs(enemy.y - spike.y) <= spike.h / 2 + enemy.radius;
+        const insideV = Math.abs(enemy.y - spike.y) <= spike.w / 2 + enemy.radius && Math.abs(enemy.x - spike.x) <= spike.h / 2 + enemy.radius;
+        if (insideH || insideV) {
+          enemy.health -= spike.contactDamage;
+          enemy.freezeTimer = Math.max(enemy.freezeTimer, 1.5);
+          if (enemy.health <= 0) { enemies.splice(j, 1); onEnemyKilled(); }
+        }
       }
+    }
+    if (spike.duration <= 0) iceSpikes.splice(i, 1);
+  }
 
-      if (equippedElement === "sand" && auraActiveTimer > 0) {
-        ctx.beginPath();
-        ctx.arc(player.x, player.y, 120, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(224, 192, 100, 0.5)";
-        ctx.fill();
-        ctx.strokeStyle = "rgba(204, 167, 0, 0.8)";
-        ctx.lineWidth = 4;
-        ctx.stroke();
+  for (let i = blizzardFields.length - 1; i >= 0; i--) {
+    const field = blizzardFields[i];
+    field.duration -= deltaTime;
+    if (!field.impactApplied) {
+      field.impactApplied = true;
+      for (let j = enemies.length - 1; j >= 0; j--) {
+        const enemy = enemies[j];
+        if (Math.hypot(enemy.x - field.x, enemy.y - field.y) <= field.radius + enemy.radius) {
+          enemy.health -= field.impactDamage;
+          enemy.freezeTimer = Math.max(enemy.freezeTimer, 3.0);
+          if (enemy.health <= 0) { enemies.splice(j, 1); onEnemyKilled(); }
+        }
       }
-
-      if (equippedElement === "flame" && flameSpinActiveTimer > 0) {
-        ctx.save();
-        const beamLen = 140;
-        const lx1 = player.x + Math.cos(flameSpinAngle) * beamLen;
-        const ly1 = player.y + Math.sin(flameSpinAngle) * beamLen;
-        const lx2 = player.x + Math.cos(flameSpinAngle + Math.PI) * beamLen;
-        const ly2 = player.y + Math.sin(flameSpinAngle + Math.PI) * beamLen;
-
-        ctx.beginPath();
-        ctx.moveTo(player.x, player.y);
-        ctx.lineTo(lx1, ly1);
-        ctx.lineTo(lx2, ly2);
-        ctx.strokeStyle = "rgba(255, 69, 0, 0.9)";
-        ctx.lineWidth = 20;
-        ctx.stroke();
-        ctx.strokeStyle = "#ffff00";
-        ctx.lineWidth = 8;
-        ctx.stroke();
-        ctx.restore();
+    }
+    field.contactTimer -= deltaTime;
+    if (field.contactTimer <= 0) {
+      field.contactTimer = field.contactTick;
+      for (let j = enemies.length - 1; j >= 0; j--) {
+        const enemy = enemies[j];
+        if (Math.hypot(enemy.x - field.x, enemy.y - field.y) <= field.radius + enemy.radius) {
+          enemy.health -= field.contactDamage;
+          enemy.freezeTimer = Math.max(enemy.freezeTimer, 1.5);
+          if (enemy.health <= 0) { enemies.splice(j, 1); onEnemyKilled(); }
+        }
       }
+    }
+    if (field.duration <= 0) blizzardFields.splice(i, 1);
+  }
 
-      for (const slash of meleeSlashes) {
-        const alpha = slash.life / slash.maxLife;
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(slash.x, slash.y);
-        ctx.arc(slash.x, slash.y, slash.reach, slash.angle - slash.arc / 2, slash.angle + slash.arc / 2);
-        ctx.closePath();
-        ctx.fillStyle = slash.color.replace(/[\d.]+\)$/, (alpha * 0.6).toFixed(2) + ")");
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(slash.x, slash.y, slash.reach * 0.85, slash.angle - slash.arc / 2, slash.angle + slash.arc / 2);
-        ctx.strokeStyle = slash.colorInner;
-        ctx.lineWidth = 6;
-        ctx.globalAlpha = alpha;
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-        ctx.restore();
+  let horizontal = 0, vertical = 0;
+  if (keys.w) vertical -= 1;
+  if (keys.s) vertical += 1;
+  if (keys.a) horizontal -= 1;
+  if (keys.d) horizontal += 1;
+  if (horizontal !== 0 && vertical !== 0) {
+    horizontal *= 1 / Math.sqrt(2);
+    vertical *= 1 / Math.sqrt(2);
+  }
+  player.x += horizontal * player.speed * deltaTime;
+  player.y += vertical * player.speed * deltaTime;
+  player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
+  player.y = Math.max(player.radius, Math.min(canvas.height - player.radius, player.y));
+
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i];
+    p.x += p.vx * deltaTime;
+    p.y += p.vy * deltaTime;
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const enemy = enemies[j];
+      if (Math.hypot(p.x - enemy.x, p.y - enemy.y) < p.radius + enemy.radius) {
+        enemy.health -= p.damage;
+        projectiles.splice(i, 1);
+        if (enemy.health <= 0) { enemies.splice(j, 1); onEnemyKilled(); }
+        break;
       }
+    }
+  }
 
+  for (let i = enemyBullets.length - 1; i >= 0; i--) {
+    const b = enemyBullets[i];
+    b.x += b.vx * deltaTime;
+    b.y += b.vy * deltaTime;
+    if (b.x < -50 || b.x > canvas.width + 50 || b.y < -50 || b.y > canvas.height + 50) {
+      enemyBullets.splice(i, 1);
+      continue;
+    }
+    if (Math.hypot(b.x - player.x, b.y - player.y) <= b.radius + player.radius) {
+      health -= b.damage;
+      enemyBullets.splice(i, 1);
+      if (health <= 0) { resetGame(); return; }
+    }
+  }
+
+  for (let i = smokeBombs.length - 1; i >= 0; i--) {
+    const b = smokeBombs[i];
+    b.duration -= deltaTime;
+    b.damageTickTimer -= deltaTime;
+    if (b.damageTickTimer <= 0) {
+      b.damageTickTimer = 0.4;
+      for (let j = enemies.length - 1; j >= 0; j--) {
+        const enemy = enemies[j];
+        if (Math.hypot(b.x - enemy.x, b.y - enemy.y) <= b.radius + enemy.radius) {
+          enemy.health -= 20;
+          if (enemy.health <= 0) { enemies.splice(j, 1); onEnemyKilled(); }
+        }
+      }
+    }
+    if (b.duration <= 0) smokeBombs.splice(i, 1);
+  }
+
+  for (let i = fireOrbs.length - 1; i >= 0; i--) {
+    const orb = fireOrbs[i];
+    orb.x += orb.vx * deltaTime;
+    orb.y += orb.vy * deltaTime;
+    orb.duration -= deltaTime;
+    orb.spinAngle += deltaTime * 5;
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const enemy = enemies[j];
+      if (orb.hitIds.has(enemy.id)) continue;
+      const dist = Math.hypot(orb.x - enemy.x, orb.y - enemy.y);
+      if (dist <= orb.radius + enemy.radius) {
+        const dmg = Math.min(orb.damage, orb.maxDamage - orb.damageDealt);
+        if (dmg <= 0) break;
+        enemy.health -= dmg;
+        orb.damageDealt += dmg;
+        orb.hitIds.add(enemy.id);
+        if (enemy.health <= 0) { enemies.splice(j, 1); onEnemyKilled(); }
+        if (orb.damageDealt >= orb.maxDamage) break;
+      }
+    }
+    if (orb.damageDealt >= orb.maxDamage || orb.duration <= 0) fireOrbs.splice(i, 1);
+  }
+
+  enemySpawnTimer += deltaTime;
+  if (enemySpawnTimer >= enemySpawnInterval) {
+    spawnEnemy();
+    enemySpawnTimer = 0;
+  }
+
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const enemy = enemies[i];
+    if (enemy.freezeTimer > 0) {
+      enemy.freezeTimer = Math.max(0, enemy.freezeTimer - deltaTime);
+      enemy.speed = enemy.baseSpeed * 0.4;
+    } else {
+      enemy.speed = enemy.baseSpeed;
+    }
+    const dx = player.x - enemy.x;
+    const dy = player.y - enemy.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 0) {
+      enemy.x += (dx / dist) * enemy.speed * deltaTime;
+      enemy.y += (dy / dist) * enemy.speed * deltaTime;
+    }
+    if (enemy.isBoss) {
+      enemy.shootTimer -= deltaTime;
+      if (enemy.shootTimer <= 0) {
+        enemy.shootTimer = 1.8;
+        const a = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+        for (let s = -1; s <= 1; s++) {
+          const spread = a + s * 0.25;
+          enemyBullets.push({
+            x: enemy.x, y: enemy.y,
+            vx: Math.cos(spread) * 220,
+            vy: Math.sin(spread) * 220,
+            radius: 10, damage: 30, color: "#cc44ff"
+          });
+        }
+      }
+    }
+    if (equippedElement === "sand" && auraActiveTimer > 0 && applyAuraDamage) {
+      if (dist <= 120 + enemy.radius) {
+        enemy.health -= 25;
+        if (enemy.health <= 0) { enemies.splice(i, 1); onEnemyKilled(); continue; }
+      }
+    }
+    if (enemy.hitCooldown > 0) enemy.hitCooldown -= deltaTime;
+    if (dist < player.radius + enemy.radius) {
+      if (enemy.hitCooldown <= 0) {
+        health -= enemy.damage;
+        enemy.hitCooldown = 0.5;
+        if (health <= 0) { resetGame(); return; }
+      }
+    }
+  }
+}
+
+function drawBackground() {
+  // deep purple-blue gradient
+  const g = ctx.createRadialGradient(canvas.width * 0.5, canvas.height * 0.5, 0, canvas.width * 0.5, canvas.height * 0.5, Math.max(canvas.width, canvas.height) * 0.8);
+  g.addColorStop(0, "#0b0a1f");
+  g.addColorStop(0.5, "#050414");
+  g.addColorStop(1, "#000000");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // moving nebula blobs
+  const t = bgTime * 0.15;
+  for (let n = 0; n < 3; n++) {
+    const px = canvas.width * (0.5 + 0.35 * Math.cos(t + n * 2.1));
+    const py = canvas.height * (0.5 + 0.35 * Math.sin(t * 1.2 + n * 1.7));
+    const radius = Math.max(canvas.width, canvas.height) * 0.45;
+    const ng = ctx.createRadialGradient(px, py, 0, px, py, radius);
+    if (n === 0) { ng.addColorStop(0, "rgba(120, 60, 200, 0.10)"); ng.addColorStop(1, "rgba(120, 60, 200, 0)"); }
+    else if (n === 1) { ng.addColorStop(0, "rgba(60, 120, 200, 0.08)"); ng.addColorStop(1, "rgba(60, 120, 200, 0)"); }
+    else { ng.addColorStop(0, "rgba(200, 40, 120, 0.06)"); ng.addColorStop(1, "rgba(200, 40, 120, 0)"); }
+    ctx.fillStyle = ng;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  // grid
+  ctx.strokeStyle = "rgba(90, 70, 140, 0.10)";
+  ctx.lineWidth = 1;
+  const gridSize = 60;
+  const ox = (bgTime * 8) % gridSize;
+  const oy = (bgTime * 8) % gridSize;
+  for (let x = -ox; x < canvas.width; x += gridSize) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+  for (let y = -oy; y < canvas.height; y += gridSize) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+
+  // stars
+  for (const s of starfield) {
+    const tw = 0.5 + 0.5 * Math.sin(bgTime * 2 + s.tw);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(200, 190, 255, " + (s.a * tw).toFixed(3) + ")";
+    ctx.fill();
+  }
+
+  // vignette
+  const vg = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, Math.min(canvas.width, canvas.height) * 0.35, canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) * 0.75);
+  vg.addColorStop(0, "rgba(0,0,0,0)");
+  vg.addColorStop(1, "rgba(0,0,0,0.75)");
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawEnemy(enemy) {
+  const now = performance.now() / 1000;
+  const pulse = 0.5 + 0.5 * Math.sin(now * 3 + (enemy.pulsePhase || 0));
+  const frozen = enemy.freezeTimer > 0;
+
+  let baseColor, glowColor;
+  if (frozen) {
+    baseColor = "#9fe4ff";
+    glowColor = "rgba(120, 220, 255, 0.85)";
+  } else if (enemy.isBoss) {
+    baseColor = "#c060ff";
+    glowColor = "rgba(180, 80, 255, 0.9)";
+  } else if (enemy.isTank) {
+    baseColor = "#3ea663";
+    glowColor = "rgba(80, 220, 130, 0.85)";
+  } else if (enemy.type === "fast") {
+    baseColor = "#ffaa33";
+    glowColor = "rgba(255, 170, 40, 0.85)";
+  } else {
+    baseColor = "#ff4455";
+    glowColor = "rgba(255, 60, 80, 0.85)";
+  }
+
+  // outer glow
+  const glowR = enemy.radius * 2.2;
+  const og = ctx.createRadialGradient(enemy.x, enemy.y, enemy.radius * 0.5, enemy.x, enemy.y, glowR);
+  og.addColorStop(0, glowColor);
+  og.addColorStop(0.5, glowColor.replace(/[\d.]+\)$/, "0.25)"));
+  og.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = og;
+  ctx.beginPath();
+  ctx.arc(enemy.x, enemy.y, glowR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // main body
+  const bg = ctx.createRadialGradient(enemy.x - enemy.radius * 0.3, enemy.y - enemy.radius * 0.3, enemy.radius * 0.1, enemy.x, enemy.y, enemy.radius);
+  bg.addColorStop(0, "#ffffff");
+  bg.addColorStop(0.35, baseColor);
+  bg.addColorStop(1, "#330000");
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // rim
+  ctx.strokeStyle = glowColor;
+  ctx.lineWidth = enemy.isBoss ? 4 : (enemy.isTank ? 3.5 : 2);
+  ctx.beginPath();
+  ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // inner pulsing core
+  ctx.beginPath();
+  ctx.arc(enemy.x, enemy.y, enemy.radius * (0.35 + pulse * 0.15), 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(255, 255, 255, " + (0.55 + pulse * 0.3).toFixed(2) + ")";
+  ctx.fill();
+
+  // boss crown
+  if (enemy.isBoss) {
+    ctx.strokeStyle = "#ffdd00";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y, enemy.radius + 8, 0, Math.PI * 2);
+    ctx.stroke();
+    const ang = now * 1.5;
+    for (let k = 0; k < 6; k++) {
+      const a = ang + k * Math.PI / 3;
+      const rx = enemy.x + Math.cos(a) * (enemy.radius + 8);
+      const ry = enemy.y + Math.sin(a) * (enemy.radius + 8);
       ctx.beginPath();
-      ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-      ctx.fillStyle = equippedElement === "smoke" ? "#778899" :
-                      equippedElement === "flame" ? "#ff4500" :
-                      equippedElement === "blizzard" ? "#7ec8ff" : player.color;
+      ctx.arc(rx, ry, 3, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffdd00";
       ctx.fill();
+    }
+  }
 
-      for (const p of projectiles) {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = "#aaaaaa";
-        ctx.fill();
-      }
+  // tank armor
+  if (enemy.isTank) {
+    ctx.strokeStyle = "rgba(160, 220, 180, 0.9)";
+    ctx.lineWidth = 3;
+    const segments = 6;
+    const ang = now * 0.6;
+    for (let k = 0; k < segments; k++) {
+      const a0 = ang + (k / segments) * Math.PI * 2;
+      const a1 = a0 + (Math.PI * 2 / segments) * 0.5;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, enemy.radius + 4, a0, a1);
+      ctx.stroke();
+    }
+  }
 
-      for (const enemy of enemies) {
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
-        ctx.fillStyle = enemy.freezeTimer > 0 ? "#66ccff" : enemy.color;
-        ctx.fill();
+  // fast trailing streaks
+  if (enemy.type === "fast" && !frozen) {
+    ctx.strokeStyle = "rgba(255, 170, 40, 0.55)";
+    ctx.lineWidth = 2;
+    const spd = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+    const ang = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+    for (let k = 0; k < 3; k++) {
+      const off = (k - 1) * 4;
+      const sx = enemy.x + Math.cos(ang + Math.PI / 2) * off;
+      const sy = enemy.y + Math.sin(ang + Math.PI / 2) * off;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx - Math.cos(ang) * (12 + pulse * 4), sy - Math.sin(ang) * (12 + pulse * 4));
+      ctx.stroke();
+    }
+  }
 
-        if (enemy.freezeTimer > 0) {
-          ctx.beginPath();
-          ctx.arc(enemy.x, enemy.y, enemy.radius + 5, 0, Math.PI * 2);
-          ctx.strokeStyle = "rgba(150, 230, 255, 0.9)";
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        }
+  // frozen sparkles
+  if (frozen) {
+    ctx.fillStyle = "rgba(220, 245, 255, 0.95)";
+    for (let k = 0; k < 4; k++) {
+      const a = now * 2 + k * Math.PI / 2;
+      const rx = enemy.x + Math.cos(a) * (enemy.radius + 6);
+      const ry = enemy.y + Math.sin(a) * (enemy.radius + 6);
+      ctx.beginPath();
+      ctx.arc(rx, ry, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 
-        if (enemy.health < enemy.maxHealth) {
-          const barW = 24, barH = 4;
-          ctx.fillStyle = "#333333";
-          ctx.fillRect(enemy.x - barW / 2, enemy.y - enemy.radius - 8, barW, barH);
-          ctx.fillStyle = "#ff3333";
-          ctx.fillRect(enemy.x - barW / 2, enemy.y - enemy.radius - 8, (enemy.health / enemy.maxHealth) * barW, barH);
-        }
-      }
+  // HP bar
+  if (enemy.health < enemy.maxHealth) {
+    const barW = enemy.isBoss ? 70 : (enemy.isTank ? 40 : 26);
+    const barH = enemy.isBoss ? 7 : (enemy.isTank ? 5 : 4);
+    const bx = enemy.x - barW / 2;
+    const by = enemy.y - enemy.radius - 12;
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+    ctx.fillStyle = "#222";
+    ctx.fillRect(bx, by, barW, barH);
+    let hpColor = "#ff3333";
+    if (enemy.isBoss) hpColor = "#cc44ff";
+    else if (enemy.isTank) hpColor = "#3ea663";
+    ctx.fillStyle = hpColor;
+    ctx.fillRect(bx, by, (enemy.health / enemy.maxHealth) * barW, barH);
+  }
+}
 
-      if (activeLaser) {
-        ctx.beginPath();
-        ctx.moveTo(activeLaser.startX, activeLaser.startY);
-        ctx.lineTo(activeLaser.endX, activeLaser.endY);
-        ctx.strokeStyle = "rgba(224, 192, 100, 0.5)";
-        ctx.lineWidth = 8;
-        ctx.stroke();
-      }
+function draw() {
+  drawBackground();
 
-      const ratio = Math.max(0, health / maxHealth);
-      ctx.fillStyle = "#202020";
-      ctx.fillRect(20, 20, 220, 32);
-      ctx.fillStyle = "#20c95c";
-      ctx.fillRect(20, 20, 220 * ratio, 32);
-      ctx.strokeStyle = "#ffffff";
+  for (const b of smokeBombs) {
+    const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.radius);
+    g.addColorStop(0, "rgba(200, 200, 200, 0.55)");
+    g.addColorStop(1, "rgba(120, 120, 120, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  for (const m of landMines) {
+    if (m.exploded) continue;
+    const now = performance.now() / 1000;
+    const p = 0.5 + 0.5 * Math.sin(now * 6);
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, m.radius + p * 3, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(60, 60, 60, 0.85)";
+    ctx.fill();
+    ctx.strokeStyle = "#ffcc00";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = "#ff3333";
+    ctx.fill();
+  }
+
+  for (const shrine of buhShrines) {
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 100);
+    const g = ctx.createRadialGradient(shrine.x, shrine.y, 0, shrine.x, shrine.y, shrine.radius);
+    g.addColorStop(0, "rgba(255, 0, 80, " + (0.55 + pulse * 0.2) + ")");
+    g.addColorStop(0.6, "rgba(180, 0, 60, 0.35)");
+    g.addColorStop(1, "rgba(120, 0, 40, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(shrine.x, shrine.y, shrine.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255, 40, 100, 0.95)";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.translate(shrine.x, shrine.y);
+    ctx.rotate(performance.now() / 400);
+    ctx.beginPath();
+    ctx.moveTo(0, -18);
+    ctx.lineTo(12, 0);
+    ctx.lineTo(0, 18);
+    ctx.lineTo(-12, 0);
+    ctx.closePath();
+    ctx.fillStyle = "#ff2266";
+    ctx.fill();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  for (const fx of shrineSlashFx) {
+    const a = fx.life / fx.maxLife;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = "#ff3366";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(fx.x - Math.cos(fx.angle) * fx.len, fx.y - Math.sin(fx.angle) * fx.len);
+    ctx.lineTo(fx.x + Math.cos(fx.angle) * fx.len, fx.y + Math.sin(fx.angle) * fx.len);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  for (const field of blizzardFields) {
+    const g = ctx.createRadialGradient(field.x, field.y, 0, field.x, field.y, field.radius);
+    g.addColorStop(0, "rgba(200, 240, 255, 0.45)");
+    g.addColorStop(0.6, "rgba(100, 200, 255, 0.30)");
+    g.addColorStop(1, "rgba(60, 120, 200, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(field.x, field.y, field.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(150, 230, 255, 0.9)";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  }
+
+  for (const spike of iceSpikes) {
+    const halfW = spike.w / 2;
+    const halfH = spike.h / 2;
+    ctx.fillStyle = "rgba(120, 200, 255, 0.85)";
+    ctx.fillRect(spike.x - halfW, spike.y - halfH / 2, spike.w, spike.h / 2);
+    ctx.fillRect(spike.x - halfH / 2, spike.y - halfW, spike.h / 2, spike.w);
+    ctx.strokeStyle = "rgba(220, 245, 255, 0.95)";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(spike.x - halfW, spike.y - halfH / 2, spike.w, spike.h / 2);
+    ctx.strokeRect(spike.x - halfH / 2, spike.y - halfW, spike.h / 2, spike.w);
+  }
+
+  for (const orb of fireOrbs) {
+    ctx.save();
+    ctx.translate(orb.x, orb.y);
+    ctx.rotate(orb.spinAngle);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, orb.radius);
+    g.addColorStop(0, "#ffffaa");
+    g.addColorStop(0.5, "rgba(255, 100, 0, 0.95)");
+    g.addColorStop(1, "rgba(255, 60, 0, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, orb.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#ffcc00";
+    ctx.lineWidth = 6;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  for (const b of buhBullets) {
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(b.spinAngle);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, b.radius * 1.6);
+    g.addColorStop(0, "#ffffff");
+    g.addColorStop(0.4, "#ff2288");
+    g.addColorStop(1, "rgba(120, 0, 40, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, b.radius * 1.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(0, 0, b.radius, 0, Math.PI * 2);
+    ctx.strokeStyle = "#ff66aa";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(255, 220, 240, 0.9)";
+    ctx.lineWidth = 2;
+    for (let k = 0; k < 4; k++) {
+      const a = k * Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * b.radius * 0.5, Math.sin(a) * b.radius * 0.5);
+      ctx.lineTo(Math.cos(a) * b.radius * 1.3, Math.sin(a) * b.radius * 1.3);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  for (const ex of bombExplosions) {
+    const alpha = ex.life / ex.maxLife;
+    ctx.globalAlpha = alpha;
+    const g = ctx.createRadialGradient(ex.x, ex.y, 0, ex.x, ex.y, ex.radius);
+    g.addColorStop(0, "rgba(255, 240, 150, 0.95)");
+    g.addColorStop(0.5, "rgba(255, 140, 0, 0.8)");
+    g.addColorStop(1, "rgba(255, 60, 0, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(ex.x, ex.y, ex.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255, 200, 0, 0.9)";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  if (equippedElement === "sand" && auraActiveTimer > 0) {
+    const g = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, 120);
+    g.addColorStop(0, "rgba(255, 220, 100, 0.35)");
+    g.addColorStop(1, "rgba(224, 192, 100, 0.10)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 120, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(240, 200, 50, 0.95)";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  }
+
+  if (equippedElement === "flame" && flameSpinActiveTimer > 0) {
+    const beamLen = 140;
+    const lx1 = player.x + Math.cos(flameSpinAngle) * beamLen;
+    const ly1 = player.y + Math.sin(flameSpinAngle) * beamLen;
+    const lx2 = player.x + Math.cos(flameSpinAngle + Math.PI) * beamLen;
+    const ly2 = player.y + Math.sin(flameSpinAngle + Math.PI) * beamLen;
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y);
+    ctx.lineTo(lx1, ly1);
+    ctx.lineTo(lx2, ly2);
+    ctx.strokeStyle = "rgba(255, 69, 0, 0.9)";
+    ctx.lineWidth = 20;
+    ctx.stroke();
+    ctx.strokeStyle = "#ffff00";
+    ctx.lineWidth = 8;
+    ctx.stroke();
+  }
+
+  for (const slash of meleeSlashes) {
+    const alpha = slash.life / slash.maxLife;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(slash.x, slash.y);
+    ctx.arc(slash.x, slash.y, slash.reach, slash.angle - slash.arc / 2, slash.angle + slash.arc / 2);
+    ctx.closePath();
+    ctx.fillStyle = slash.color.replace(/[\d.]+\)$/, (alpha * 0.6).toFixed(2) + ")");
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(slash.x, slash.y, slash.reach * 0.85, slash.angle - slash.arc / 2, slash.angle + slash.arc / 2);
+    ctx.strokeStyle = slash.colorInner;
+    ctx.lineWidth = 6;
+    ctx.globalAlpha = alpha;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // player glow
+  const now = performance.now() / 1000;
+  const plrBase = equippedElement === "smoke" ? "#778899" :
+                  equippedElement === "flame" ? "#ff4500" :
+                  equippedElement === "blizzard" ? "#7ec8ff" :
+                  equippedElement === "bomb" ? "#aaaaaa" :
+                  equippedElement === "buh" ? "#ff2288" : player.color;
+  const plrGlow = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, player.radius * 2.6);
+  plrGlow.addColorStop(0, plrBase);
+  plrGlow.addColorStop(0.5, plrBase + "55");
+  plrGlow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = plrGlow;
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.radius * 2.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  const pg = ctx.createRadialGradient(player.x - player.radius * 0.3, player.y - player.radius * 0.3, player.radius * 0.1, player.x, player.y, player.radius);
+  pg.addColorStop(0, "#ffffff");
+  pg.addColorStop(0.4, plrBase);
+  pg.addColorStop(1, plrBase);
+  ctx.fillStyle = pg;
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.85)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  for (const p of projectiles) {
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius * 1.5);
+    g.addColorStop(0, "#ffffff");
+    g.addColorStop(1, "rgba(150,150,150,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.fillStyle = "#cccccc";
+    ctx.fill();
+  }
+
+  for (const b of enemyBullets) {
+    const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.radius * 1.8);
+    g.addColorStop(0, "#ffffff");
+    g.addColorStop(0.5, b.color);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.radius * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+    ctx.fillStyle = b.color;
+    ctx.fill();
+  }
+
+  for (const enemy of enemies) {
+    drawEnemy(enemy);
+  }
+
+  if (activeLaser) {
+    ctx.beginPath();
+    ctx.moveTo(activeLaser.startX, activeLaser.startY);
+    ctx.lineTo(activeLaser.endX, activeLaser.endY);
+    ctx.strokeStyle = "rgba(255, 230, 130, 0.85)";
+    ctx.lineWidth = 8;
+    ctx.stroke();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // HUD
+  const ratio = Math.max(0, health / maxHealth);
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(20, 20, 220, 32);
+  ctx.fillStyle = "#20c95c";
+  ctx.fillRect(22, 22, 216 * ratio, 28);
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(20, 20, 220, 32);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 18px Arial";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Health: " + Math.max(0, health) + "/" + maxHealth, 30, 36);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 26px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillText("WAVE " + currentWave + (isBossWave(currentWave) ? " - BOSS" : ""), canvas.width / 2, 20);
+  ctx.font = "14px Arial";
+  ctx.fillStyle = "#cccccc";
+  ctx.fillText("Kills: " + enemiesKilledCurrentWave + "/" + getKillsRequiredForWave(currentWave) + " | Money: $" + money + " (+$" + getMoneyPerKill() + "/kill)", canvas.width / 2, 54);
+
+  const width = 150, height = 40, margin = 20, offset = 100;
+  const fX = canvas.width - (width * 2) - margin - 10, fY = canvas.height - height - offset;
+  const gX = canvas.width - width - margin, gY = canvas.height - height - offset;
+
+  ctx.font = "bold 15px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(fX, fY, width, height);
+  ctx.strokeStyle = "#ffffff"; ctx.strokeRect(fX, fY, width, height);
+
+  if (equippedElement === "sand") {
+    if (auraActiveTimer > 0) { ctx.fillStyle = "#ffe600"; ctx.fillText("[F] AURA (" + auraActiveTimer.toFixed(1) + "s)", fX + width / 2, fY + height / 2); }
+    else if (auraCooldownTimer <= 0) { ctx.fillStyle = "#cca700"; ctx.fillText("[F] Aura: READY", fX + width / 2, fY + height / 2); }
+    else { ctx.fillStyle = "#888888"; ctx.fillText("[F] " + auraCooldownTimer.toFixed(1) + "s", fX + width / 2, fY + height / 2); }
+  } else if (equippedElement === "smoke") {
+    if (smokeDashActiveTimer > 0) { ctx.fillStyle = "#00ffff"; ctx.fillText("[F] DASH (" + smokeDashActiveTimer.toFixed(1) + "s)", fX + width / 2, fY + height / 2); }
+    else if (smokeDashCooldownTimer <= 0) { ctx.fillStyle = "#00bfff"; ctx.fillText("[F] Smoke Dash", fX + width / 2, fY + height / 2); }
+    else { ctx.fillStyle = "#888888"; ctx.fillText("[F] " + smokeDashCooldownTimer.toFixed(1) + "s", fX + width / 2, fY + height / 2); }
+  } else if (equippedElement === "flame") {
+    if (flameOrbCooldownTimer <= 0) { ctx.fillStyle = "#ff4500"; ctx.fillText("[F] Fireball (300dmg)", fX + width / 2, fY + height / 2); }
+    else { ctx.fillStyle = "#888888"; ctx.fillText("[F] " + flameOrbCooldownTimer.toFixed(1) + "s", fX + width / 2, fY + height / 2); }
+  } else if (equippedElement === "blizzard") {
+    if (blizzardFieldCooldownTimer <= 0) { ctx.fillStyle = "#7ec8ff"; ctx.fillText("[F] Blizzard Field", fX + width / 2, fY + height / 2); }
+    else { ctx.fillStyle = "#888888"; ctx.fillText("[F] " + blizzardFieldCooldownTimer.toFixed(1) + "s", fX + width / 2, fY + height / 2); }
+  } else if (equippedElement === "bomb") {
+    if (bombBigCooldownTimer <= 0) { ctx.fillStyle = "#ffcc00"; ctx.fillText("[F] Big Bomb + Mines", fX + width / 2, fY + height / 2); }
+    else { ctx.fillStyle = "#888888"; ctx.fillText("[F] " + bombBigCooldownTimer.toFixed(1) + "s", fX + width / 2, fY + height / 2); }
+  } else if (equippedElement === "buh") {
+    if (buhShrineCooldownTimer <= 0) { ctx.fillStyle = "#ff2288"; ctx.fillText("[F] BUH SHRINE", fX + width / 2, fY + height / 2); }
+    else { ctx.fillStyle = "#888888"; ctx.fillText("[F] " + buhShrineCooldownTimer.toFixed(1) + "s", fX + width / 2, fY + height / 2); }
+  }
+
+  ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(gX, gY, width, height);
+  ctx.strokeStyle = "#ffffff"; ctx.strokeRect(gX, gY, width, height);
+
+  if (equippedElement === "sand") {
+    if (beamCooldownTimer <= 0) { ctx.fillStyle = "#cca700"; ctx.fillText("[G] Beam: READY", gX + width / 2, gY + height / 2); }
+    else { ctx.fillStyle = "#888888"; ctx.fillText("[G] " + beamCooldownTimer.toFixed(1) + "s", gX + width / 2, gY + height / 2); }
+  } else if (equippedElement === "smoke") {
+    if (smokeShotCooldownTimer <= 0) { ctx.fillStyle = "#00bfff"; ctx.fillText("[G] Smoke Shot", gX + width / 2, gY + height / 2); }
+    else { ctx.fillStyle = "#888888"; ctx.fillText("[G] " + smokeShotCooldownTimer.toFixed(1) + "s", gX + width / 2, gY + height / 2); }
+  } else if (equippedElement === "flame") {
+    if (flameSpinActiveTimer > 0) { ctx.fillStyle = "#ffcc00"; ctx.fillText("[G] SPIN (" + flameSpinActiveTimer.toFixed(1) + "s)", gX + width / 2, gY + height / 2); }
+    else if (flameSpinCooldownTimer <= 0) { ctx.fillStyle = "#ff4500"; ctx.fillText("[G] Spin Laser", gX + width / 2, gY + height / 2); }
+    else { ctx.fillStyle = "#888888"; ctx.fillText("[G] " + flameSpinCooldownTimer.toFixed(1) + "s", gX + width / 2, gY + height / 2); }
+  } else if (equippedElement === "blizzard") {
+    if (iceSpikeCooldownTimer <= 0) { ctx.fillStyle = "#7ec8ff"; ctx.fillText("[G] Ice Cross", gX + width / 2, gY + height / 2); }
+    else { ctx.fillStyle = "#888888"; ctx.fillText("[G] " + iceSpikeCooldownTimer.toFixed(1) + "s", gX + width / 2, gY + height / 2); }
+  } else if (equippedElement === "bomb") {
+    if (bombMiniCooldownTimer <= 0) { ctx.fillStyle = "#ffcc00"; ctx.fillText("[G] Mini Bomb", gX + width / 2, gY + height / 2); }
+    else { ctx.fillStyle = "#888888"; ctx.fillText("[G] " + bombMiniCooldownTimer.toFixed(1) + "s", gX + width / 2, gY + height / 2); }
+  } else if (equippedElement === "buh") {
+    if (buhBarrageCooldownTimer <= 0) { ctx.fillStyle = "#ff2288"; ctx.fillText("[G] Buh Barrage (7x)", gX + width / 2, gY + height / 2); }
+    else { ctx.fillStyle = "#888888"; ctx.fillText("[G] " + buhBarrageCooldownTimer.toFixed(1) + "s", gX + width / 2, gY + height / 2); }
+  }
+
+  const spaceX = canvas.width / 2 - 80, spaceY = canvas.height - 60;
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(spaceX, spaceY, 160, 40);
+  ctx.strokeStyle = "#ffffff";
+  ctx.strokeRect(spaceX, spaceY, 160, 40);
+  if (meleeCooldownTimer <= 0) {
+    if (equippedElement === "flame") { ctx.fillStyle = "#ff4500"; ctx.fillText("[SPACE] Sword Slash", spaceX + 80, spaceY + 20); }
+    else if (equippedElement === "blizzard") { ctx.fillStyle = "#7ec8ff"; ctx.fillText("[SPACE] Ice Sword", spaceX + 80, spaceY + 20); }
+    else if (equippedElement === "bomb") { ctx.fillStyle = "#ffcc00"; ctx.fillText("[SPACE] Bomb Punch", spaceX + 80, spaceY + 20); }
+    else if (equippedElement === "buh") { ctx.fillStyle = "#ff2288"; ctx.fillText("[SPACE] Buh Slash", spaceX + 80, spaceY + 20); }
+    else { ctx.fillStyle = "#666666"; ctx.fillText("[SPACE] Melee (n/a)", spaceX + 80, spaceY + 20); }
+  } else {
+    ctx.fillStyle = "#888888";
+    ctx.fillText("[SPACE] " + meleeCooldownTimer.toFixed(1) + "s", spaceX + 80, spaceY + 20);
+  }
+
+  const btnX = canvas.width - 180, btnY = canvas.height / 2 - 25, btnW = 140, btnH = 50;
+
+  if (isPaused && currentScreen === "game") {
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ffffff"; ctx.font = "bold 48px Arial"; ctx.fillText("GAME PAUSED", canvas.width / 2, canvas.height / 2 - 20);
+    ctx.font = "20px Arial"; ctx.fillStyle = "#cccccc"; ctx.fillText("Press '1' to Resume", canvas.width / 2, canvas.height / 2 + 35);
+
+    ctx.fillStyle = "#cca700"; ctx.fillRect(btnX, btnY, btnW, btnH);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3; ctx.strokeRect(btnX, btnY, btnW, btnH);
+    ctx.fillStyle = "#ffffff"; ctx.font = "bold 22px Arial"; ctx.fillText("GACHA", btnX + btnW / 2, btnY + btnH / 2);
+  } else if (isPaused && currentScreen === "gacha") {
+    ctx.fillStyle = "rgba(10,10,20,0.97)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ffd700"; ctx.font = "bold 42px Arial"; ctx.fillText("GACHA CHEST", canvas.width / 2, 40);
+
+    const cx = canvas.width / 2, cy = canvas.height / 2 - 110;
+    ctx.fillStyle = "#8b5a2b"; ctx.fillRect(cx - 60, cy - 20, 120, 80);
+    ctx.strokeStyle = "#4a2e11"; ctx.lineWidth = 4; ctx.strokeRect(cx - 60, cy - 20, 120, 80);
+    ctx.fillStyle = "#a66d3b"; ctx.beginPath(); ctx.arc(cx, cy - 20, 60, Math.PI, 0); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#ffd700"; ctx.fillRect(cx - 50, cy - 20, 16, 80); ctx.fillRect(cx + 34, cy - 20, 16, 80);
+
+    const rollBtn = { x: canvas.width / 2 - 110, y: cy + 80, w: 220, h: 45 };
+    ctx.fillStyle = "#228b22"; ctx.fillRect(rollBtn.x, rollBtn.y, rollBtn.w, rollBtn.h);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.strokeRect(rollBtn.x, rollBtn.y, rollBtn.w, rollBtn.h);
+    ctx.fillStyle = "#ffffff"; ctx.font = "bold 18px Arial";
+    ctx.fillText("ROLL ($10 Money)", rollBtn.x + rollBtn.w / 2, rollBtn.y + rollBtn.h / 2);
+
+    const cardW = 86, cardH = 76, gap = 8;
+    const totalW = cardW * 6 + gap * 5;
+    const startX = canvas.width / 2 - totalW / 2;
+    const cardY = cy + 145;
+
+    const elems = [
+      { key: "sand", name: "SAND", rate: "", color: "#cca700", unlocked: true },
+      { key: "smoke", name: "SMOKE", rate: "19%", color: "#00bfff", unlocked: unlockedElements.smoke },
+      { key: "bomb", name: "BOMB", rate: "4%", color: "#ffcc00", unlocked: unlockedElements.bomb },
+      { key: "flame", name: "FLAME", rate: "4%", color: "#ff4500", unlocked: unlockedElements.flame },
+      { key: "blizzard", name: "BLIZZARD", rate: "0.4%", color: "#7ec8ff", unlocked: unlockedElements.blizzard },
+      { key: "buh", name: "BUH", rate: "0.1%", color: "#ff2288", unlocked: unlockedElements.buh }
+    ];
+
+    for (let i = 0; i < elems.length; i++) {
+      const e = elems[i];
+      const x = startX + (cardW + gap) * i;
+      const isEq = equippedElement === e.key;
+      ctx.fillStyle = !e.unlocked ? "#222222" : (isEq ? e.color : "#333333");
+      ctx.fillRect(x, cardY, cardW, cardH);
+      ctx.strokeStyle = e.unlocked && e.key === "buh" ? "#ff2288" : (e.unlocked && e.key === "blizzard" ? "#7ec8ff" : "#ffffff");
+      ctx.lineWidth = (e.unlocked && (e.key === "buh" || e.key === "blizzard")) ? 3 : 2;
+      ctx.strokeRect(x, cardY, cardW, cardH);
       ctx.lineWidth = 2;
-      ctx.strokeRect(20, 20, 220, 32);
       ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 18px Arial";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "middle";
-      ctx.fillText("Health: " + Math.max(0, health) + "/" + maxHealth, 30, 36);
-
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 26px Arial";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      ctx.fillText("WAVE " + currentWave, canvas.width / 2, 20);
-      ctx.font = "14px Arial";
-      ctx.fillStyle = "#aaaaaa";
-      ctx.fillText("Wave Kills: " + enemiesKilledCurrentWave + "/" + getKillsRequiredForWave(currentWave) + " | Money: $" + money + " (+$" + getMoneyPerKill() + "/kill)", canvas.width / 2, 54);
-
-      const width = 150, height = 40, margin = 20, offset = 100;
-      const fX = canvas.width - (width * 2) - margin - 10, fY = canvas.height - height - offset;
-      const gX = canvas.width - width - margin, gY = canvas.height - height - offset;
-
-      ctx.font = "bold 15px Arial";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-
-      ctx.fillStyle = "#202020"; ctx.fillRect(fX, fY, width, height);
-      ctx.strokeStyle = "#ffffff"; ctx.strokeRect(fX, fY, width, height);
-
-      if (equippedElement === "sand") {
-        if (auraActiveTimer > 0) { ctx.fillStyle = "#ffe600"; ctx.fillText("[F] AURA (" + auraActiveTimer.toFixed(1) + "s)", fX + width / 2, fY + height / 2); }
-        else if (auraCooldownTimer <= 0) { ctx.fillStyle = "#cca700"; ctx.fillText("[F] Aura: READY", fX + width / 2, fY + height / 2); }
-        else { ctx.fillStyle = "#888888"; ctx.fillText("[F] " + auraCooldownTimer.toFixed(1) + "s", fX + width / 2, fY + height / 2); }
-      } else if (equippedElement === "smoke") {
-        if (smokeDashActiveTimer > 0) { ctx.fillStyle = "#00ffff"; ctx.fillText("[F] DASH (" + smokeDashActiveTimer.toFixed(1) + "s)", fX + width / 2, fY + height / 2); }
-        else if (smokeDashCooldownTimer <= 0) { ctx.fillStyle = "#00bfff"; ctx.fillText("[F] Smoke Dash", fX + width / 2, fY + height / 2); }
-        else { ctx.fillStyle = "#888888"; ctx.fillText("[F] " + smokeDashCooldownTimer.toFixed(1) + "s", fX + width / 2, fY + height / 2); }
-      } else if (equippedElement === "flame") {
-        if (flameOrbCooldownTimer <= 0) { ctx.fillStyle = "#ff4500"; ctx.fillText("[F] Fireball (300dmg)", fX + width / 2, fY + height / 2); }
-        else { ctx.fillStyle = "#888888"; ctx.fillText("[F] " + flameOrbCooldownTimer.toFixed(1) + "s", fX + width / 2, fY + height / 2); }
-      } else if (equippedElement === "blizzard") {
-        if (blizzardFieldCooldownTimer <= 0) { ctx.fillStyle = "#7ec8ff"; ctx.fillText("[F] Blizzard Field", fX + width / 2, fY + height / 2); }
-        else { ctx.fillStyle = "#888888"; ctx.fillText("[F] " + blizzardFieldCooldownTimer.toFixed(1) + "s", fX + width / 2, fY + height / 2); }
-      }
-
-      ctx.fillStyle = "#202020"; ctx.fillRect(gX, gY, width, height);
-      ctx.strokeStyle = "#ffffff"; ctx.strokeRect(gX, gY, width, height);
-
-      if (equippedElement === "sand") {
-        if (beamCooldownTimer <= 0) { ctx.fillStyle = "#cca700"; ctx.fillText("[G] Beam: READY", gX + width / 2, gY + height / 2); }
-        else { ctx.fillStyle = "#888888"; ctx.fillText("[G] " + beamCooldownTimer.toFixed(1) + "s", gX + width / 2, gY + height / 2); }
-      } else if (equippedElement === "smoke") {
-        if (smokeShotCooldownTimer <= 0) { ctx.fillStyle = "#00bfff"; ctx.fillText("[G] Smoke Shot", gX + width / 2, gY + height / 2); }
-        else { ctx.fillStyle = "#888888"; ctx.fillText("[G] " + smokeShotCooldownTimer.toFixed(1) + "s", gX + width / 2, gY + height / 2); }
-      } else if (equippedElement === "flame") {
-        if (flameSpinActiveTimer > 0) { ctx.fillStyle = "#ffcc00"; ctx.fillText("[G] SPIN (" + flameSpinActiveTimer.toFixed(1) + "s)", gX + width / 2, gY + height / 2); }
-        else if (flameSpinCooldownTimer <= 0) { ctx.fillStyle = "#ff4500"; ctx.fillText("[G] Spin Laser", gX + width / 2, gY + height / 2); }
-        else { ctx.fillStyle = "#888888"; ctx.fillText("[G] " + flameSpinCooldownTimer.toFixed(1) + "s", gX + width / 2, gY + height / 2); }
-      } else if (equippedElement === "blizzard") {
-        if (iceSpikeCooldownTimer <= 0) { ctx.fillStyle = "#7ec8ff"; ctx.fillText("[G] Ice Cross", gX + width / 2, gY + height / 2); }
-        else { ctx.fillStyle = "#888888"; ctx.fillText("[G] " + iceSpikeCooldownTimer.toFixed(1) + "s", gX + width / 2, gY + height / 2); }
-      }
-
-      // Space melee indicator
-      const spaceX = canvas.width / 2 - 80, spaceY = canvas.height - 60;
-      ctx.fillStyle = "#202020";
-      ctx.fillRect(spaceX, spaceY, 160, 40);
-      ctx.strokeStyle = "#ffffff";
-      ctx.strokeRect(spaceX, spaceY, 160, 40);
-      if (meleeCooldownTimer <= 0) {
-        if (equippedElement === "flame") { ctx.fillStyle = "#ff4500"; ctx.fillText("[SPACE] Sword Slash", spaceX + 80, spaceY + 20); }
-        else if (equippedElement === "blizzard") { ctx.fillStyle = "#7ec8ff"; ctx.fillText("[SPACE] Ice Sword", spaceX + 80, spaceY + 20); }
-        else { ctx.fillStyle = "#666666"; ctx.fillText("[SPACE] Melee (n/a)", spaceX + 80, spaceY + 20); }
-      } else {
-        ctx.fillStyle = "#888888";
-        ctx.fillText("[SPACE] " + meleeCooldownTimer.toFixed(1) + "s", spaceX + 80, spaceY + 20);
-      }
-
-      const btnX = canvas.width - 180, btnY = canvas.height / 2 - 25, btnW = 140, btnH = 50;
-
-      if (isPaused && currentScreen === "game") {
-        ctx.fillStyle = "rgba(0,0,0,0.65)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#ffffff"; ctx.font = "bold 48px Arial"; ctx.fillText("GAME PAUSED", canvas.width / 2, canvas.height / 2 - 20);
-        ctx.font = "20px Arial"; ctx.fillStyle = "#cccccc"; ctx.fillText("Press '1' to Resume", canvas.width / 2, canvas.height / 2 + 35);
-
-        ctx.fillStyle = "#cca700"; ctx.fillRect(btnX, btnY, btnW, btnH);
-        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3; ctx.strokeRect(btnX, btnY, btnW, btnH);
-        ctx.fillStyle = "#ffffff"; ctx.font = "bold 22px Arial"; ctx.fillText("GACHA", btnX + btnW / 2, btnY + btnH / 2);
-
-      } else if (isPaused && currentScreen === "gacha") {
-        ctx.fillStyle = "rgba(10,10,20,0.95)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#ffd700"; ctx.font = "bold 42px Arial"; ctx.fillText("GACHA CHEST", canvas.width / 2, 50);
-
-        const cx = canvas.width / 2, cy = canvas.height / 2 - 100;
-        ctx.fillStyle = "#8b5a2b"; ctx.fillRect(cx - 60, cy - 20, 120, 80);
-        ctx.strokeStyle = "#4a2e11"; ctx.lineWidth = 4; ctx.strokeRect(cx - 60, cy - 20, 120, 80);
-        ctx.fillStyle = "#a66d3b"; ctx.beginPath(); ctx.arc(cx, cy - 20, 60, Math.PI, 0); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = "#ffd700"; ctx.fillRect(cx - 50, cy - 20, 16, 80); ctx.fillRect(cx + 34, cy - 20, 16, 80);
-
-        const rollBtn = { x: canvas.width / 2 - 110, y: cy + 80, w: 220, h: 45 };
-        ctx.fillStyle = "#228b22"; ctx.fillRect(rollBtn.x, rollBtn.y, rollBtn.w, rollBtn.h);
-        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.strokeRect(rollBtn.x, rollBtn.y, rollBtn.w, rollBtn.h);
-        ctx.fillStyle = "#ffffff"; ctx.font = "bold 18px Arial";
-        ctx.fillText("ROLL ($10 Money)", rollBtn.x + rollBtn.w / 2, rollBtn.y + rollBtn.h / 2);
-
-        const cardW = 110, cardH = 80, gap = 12;
-        const totalW = cardW * 4 + gap * 3;
-        const startX = canvas.width / 2 - totalW / 2;
-        const cardY = cy + 150;
-
-        const cardSand = { x: startX, y: cardY, w: cardW, h: cardH };
-        ctx.fillStyle = equippedElement === "sand" ? "#cca700" : "#333333";
-        ctx.fillRect(cardSand.x, cardSand.y, cardSand.w, cardSand.h);
-        ctx.strokeStyle = "#ffffff"; ctx.strokeRect(cardSand.x, cardSand.y, cardSand.w, cardSand.h);
-        ctx.fillStyle = "#ffffff"; ctx.font = "bold 13px Arial";
-        ctx.fillText("SAND", cardSand.x + cardSand.w / 2, cardSand.y + 25);
-        ctx.font = "10px Arial";
-        ctx.fillText(equippedElement === "sand" ? "[EQUIPPED]" : "[EQUIP]", cardSand.x + cardSand.w / 2, cardSand.y + 55);
-
-        const cardSmoke = { x: startX + cardW + gap, y: cardY, w: cardW, h: cardH };
-        ctx.fillStyle = !unlockedElements.smoke ? "#222222" : (equippedElement === "smoke" ? "#00bfff" : "#333333");
-        ctx.fillRect(cardSmoke.x, cardSmoke.y, cardSmoke.w, cardSmoke.h);
-        ctx.strokeStyle = "#ffffff"; ctx.strokeRect(cardSmoke.x, cardSmoke.y, cardSmoke.w, cardSmoke.h);
-        ctx.fillStyle = "#ffffff"; ctx.font = "bold 13px Arial";
-        ctx.fillText("SMOKE", cardSmoke.x + cardSmoke.w / 2, cardSmoke.y + 25);
-        ctx.font = "10px Arial";
-        ctx.fillText(!unlockedElements.smoke ? "[19%]" : (equippedElement === "smoke" ? "[EQUIPPED]" : "[EQUIP]"), cardSmoke.x + cardSmoke.w / 2, cardSmoke.y + 55);
-
-        const cardFlame = { x: startX + (cardW + gap) * 2, y: cardY, w: cardW, h: cardH };
-        ctx.fillStyle = !unlockedElements.flame ? "#222222" : (equippedElement === "flame" ? "#ff4500" : "#333333");
-        ctx.fillRect(cardFlame.x, cardFlame.y, cardFlame.w, cardFlame.h);
-        ctx.strokeStyle = "#ffffff"; ctx.strokeRect(cardFlame.x, cardFlame.y, cardFlame.w, cardFlame.h);
-        ctx.fillStyle = "#ffffff"; ctx.font = "bold 13px Arial";
-        ctx.fillText("FLAME", cardFlame.x + cardFlame.w / 2, cardFlame.y + 25);
-        ctx.font = "10px Arial";
-        ctx.fillText(!unlockedElements.flame ? "[5%]" : (equippedElement === "flame" ? "[EQUIPPED]" : "[EQUIP]"), cardFlame.x + cardFlame.w / 2, cardFlame.y + 55);
-
-        const cardBlizzard = { x: startX + (cardW + gap) * 3, y: cardY, w: cardW, h: cardH };
-        ctx.fillStyle = !unlockedElements.blizzard ? "#222222" : (equippedElement === "blizzard" ? "#7ec8ff" : "#333333");
-        ctx.fillRect(cardBlizzard.x, cardBlizzard.y, cardBlizzard.w, cardBlizzard.h);
-        ctx.strokeStyle = unlockedElements.blizzard ? "#7ec8ff" : "#ffffff";
-        ctx.lineWidth = unlockedElements.blizzard ? 3 : 2;
-        ctx.strokeRect(cardBlizzard.x, cardBlizzard.y, cardBlizzard.w, cardBlizzard.h);
-        ctx.lineWidth = 2;
-        ctx.fillStyle = "#ffffff"; ctx.font = "bold 13px Arial";
-        ctx.fillText("BLIZZARD", cardBlizzard.x + cardBlizzard.w / 2, cardBlizzard.y + 25);
-        ctx.font = "10px Arial";
-        ctx.fillText(!unlockedElements.blizzard ? "[1% MYTHIC]" : (equippedElement === "blizzard" ? "[EQUIPPED]" : "[EQUIP]"), cardBlizzard.x + cardBlizzard.w / 2, cardBlizzard.y + 55);
-
-        if (lastRollResult) {
-          ctx.fillStyle = "#ffd700"; ctx.font = "16px Arial";
-          ctx.fillText(lastRollResult, canvas.width / 2, cy + 260);
-        }
-
-        ctx.fillStyle = "#9b30ff"; ctx.fillRect(btnX, btnY, btnW, btnH);
-        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3; ctx.strokeRect(btnX, btnY, btnW, btnH);
-        ctx.fillStyle = "#ffffff"; ctx.font = "bold 22px Arial"; ctx.fillText("GAME", btnX + btnW / 2, btnY + btnH / 2);
-      }
+      ctx.font = "bold 11px Arial";
+      ctx.fillText(e.name, x + cardW / 2, cardY + 25);
+      ctx.font = "9px Arial";
+      const label = !e.unlocked ? "[" + (e.rate || "LOCKED") + "]" : (isEq ? "[EQ]" : "[EQUIP]");
+      ctx.fillText(label, x + cardW / 2, cardY + 55);
     }
 
-    function gameLoop(now) {
-      const dt = Math.min(Math.max(0, (now - lastTime) / 1000), 0.1);
-      lastTime = now;
-      update(dt);
-      draw();
-      requestAnimationFrame(gameLoop);
+    if (lastRollResult) {
+      ctx.fillStyle = "#ffd700"; ctx.font = "16px Arial";
+      ctx.fillText(lastRollResult, canvas.width / 2, cy + 250);
     }
 
-    window.addEventListener("click", function (e) {
-      if (!isPaused) return;
-      const rect = canvas.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+    ctx.fillStyle = "#9b30ff"; ctx.fillRect(btnX, btnY, btnW, btnH);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3; ctx.strokeRect(btnX, btnY, btnW, btnH);
+    ctx.fillStyle = "#ffffff"; ctx.font = "bold 22px Arial"; ctx.fillText("GAME", btnX + btnW / 2, btnY + btnH / 2);
+  }
+}
 
-      const btnX = canvas.width - 180, btnY = canvas.height / 2 - 25, btnW = 140, btnH = 50;
-      if (mx >= btnX && mx <= btnX + btnW && my >= btnY && my <= btnY + btnH) {
-        currentScreen = (currentScreen === "game") ? "gacha" : "game";
-        return;
-      }
+function gameLoop(now) {
+  const dt = Math.min(Math.max(0, (now - lastTime) / 1000), 0.1);
+  lastTime = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(gameLoop);
+}
 
-      if (currentScreen === "gacha") {
-        const cy = canvas.height / 2 - 100;
-        const rollBtn = { x: canvas.width / 2 - 110, y: cy + 80, w: 220, h: 45 };
-        if (mx >= rollBtn.x && mx <= rollBtn.x + rollBtn.w && my >= rollBtn.y && my <= rollBtn.y + rollBtn.h) {
-          rollGacha();
-          return;
+window.addEventListener("click", function (e) {
+  if (!isPaused) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  const btnX = canvas.width - 180, btnY = canvas.height / 2 - 25, btnW = 140, btnH = 50;
+  if (mx >= btnX && mx <= btnX + btnW && my >= btnY && my <= btnY + btnH) {
+    currentScreen = (currentScreen === "game") ? "gacha" : "game";
+    return;
+  }
+
+  if (currentScreen === "gacha") {
+    const cy = canvas.height / 2 - 110;
+    const rollBtn = { x: canvas.width / 2 - 110, y: cy + 80, w: 220, h: 45 };
+    if (mx >= rollBtn.x && mx <= rollBtn.x + rollBtn.w && my >= rollBtn.y && my <= rollBtn.y + rollBtn.h) {
+      rollGacha();
+      return;
+    }
+
+    const cardW = 86, cardH = 76, gap = 8;
+    const totalW = cardW * 6 + gap * 5;
+    const startX = canvas.width / 2 - totalW / 2;
+    const cardY = cy + 145;
+    const keys2 = ["sand", "smoke", "bomb", "flame", "blizzard", "buh"];
+
+    if (my >= cardY && my <= cardY + cardH) {
+      for (let i = 0; i < keys2.length; i++) {
+        const x = startX + (cardW + gap) * i;
+        if (mx >= x && mx <= x + cardW) {
+          const k = keys2[i];
+          if (k === "sand" || unlockedElements[k]) {
+            equippedElement = k;
+            saveGameData();
+            return;
+          }
         }
-
-        const cardW = 110, cardH = 80, gap = 12;
-        const totalW = cardW * 4 + gap * 3;
-        const startX = canvas.width / 2 - totalW / 2;
-        const cardY = cy + 150;
-
-        if (my >= cardY && my <= cardY + cardH) {
-          if (mx >= startX && mx <= startX + cardW) {
-            equippedElement = "sand"; saveGameData(); return;
-          }
-          if (mx >= startX + (cardW + gap) && mx <= startX + (cardW + gap) + cardW && unlockedElements.smoke) {
-            equippedElement = "smoke"; saveGameData(); return;
-          }
-          if (mx >= startX + (cardW + gap) * 2 && mx <= startX + (cardW + gap) * 2 + cardW && unlockedElements.flame) {
-            equippedElement = "flame"; saveGameData(); return;
-          }
-          if (mx >= startX + (cardW + gap) * 3 && mx <= startX + (cardW + gap) * 3 + cardW && unlockedElements.blizzard) {
-            equippedElement = "blizzard"; saveGameData(); return;
-          }
-        }
       }
-    });
+    }
+  }
+});
 
-    window.addEventListener("keydown", function (e) {
-      const k = e.key.toLowerCase();
-      if (k === "1") {
-        isPaused = !isPaused;
-        if (!isPaused) currentScreen = "game";
-        e.preventDefault();
-        return;
-      }
-      if (k in keys) { keys[k] = true; e.preventDefault(); }
-      if (k === "g") { useGAbility(); e.preventDefault(); }
-      if (k === "f") { useFAbility(); e.preventDefault(); }
-      if (k === " " || k === "spacebar" || e.code === "Space") { useMelee(); e.preventDefault(); }
-    });
+window.addEventListener("keydown", function (e) {
+  const k = e.key.toLowerCase();
+  if (k === "1") {
+    isPaused = !isPaused;
+    if (!isPaused) currentScreen = "game";
+    e.preventDefault();
+    return;
+  }
+  if (k in keys) { keys[k] = true; e.preventDefault(); }
+  if (k === "g") { useGAbility(); e.preventDefault(); }
+  if (k === "f") { useFAbility(); e.preventDefault(); }
+  if (k === " " || k === "spacebar" || e.code === "Space") { useMelee(); e.preventDefault(); }
+});
 
-    window.addEventListener("keyup", function (e) {
-      const k = e.key.toLowerCase();
-      if (k in keys) { keys[k] = false; e.preventDefault(); }
-    });
+window.addEventListener("keyup", function (e) {
+  const k = e.key.toLowerCase();
+  if (k in keys) { keys[k] = false; e.preventDefault(); }
+});
 
-    requestAnimationFrame(gameLoop);
-  </script>
+startWave();
+requestAnimationFrame(gameLoop);
+</script>
 </body>
 </html>
